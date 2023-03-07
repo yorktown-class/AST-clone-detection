@@ -15,6 +15,7 @@ import functools
 # from .collate import collate_fn
 from ..parser import code2tree
 from ..parser.code2tree import Tree
+from detecter import config
 
 
 def shuffle_slice(array, start, stop):
@@ -48,8 +49,8 @@ def convert(data_list: List) -> List[Tuple[str, Tree]]:
     V_list = []
     E_list = []
 
-    with multiprocessing.Pool(processes=12) as p:
-        iresult = p.imap_unordered(convert_impl, data_list, 40)
+    with multiprocessing.Pool(processes=config.NUM_CORE) as p:
+        iresult = p.imap_unordered(convert_impl, data_list, 20)
         with tqdm(total=len(data_list)) as pbar:
             for item in iresult:
                 if item:
@@ -65,7 +66,7 @@ def convert(data_list: List) -> List[Tuple[str, Tree]]:
     sentence2emb = SentenceTransformer('all-MiniLM-L6-v2')
     embedding_list = sentence2emb.encode(
         node_list,
-        batch_size=1024,
+        batch_size=config.WORD2VEC_BATCH_SIZE,
         show_progress_bar=True, 
         device="cuda")
     
@@ -81,7 +82,7 @@ def convert(data_list: List) -> List[Tuple[str, Tree]]:
 
 
 class DataSet(data.Dataset):
-    CHUNK_SIZE = 1000
+    CHUNK_SIZE = config.CHUNK_SIZE
     def __init__(self, data_path, item_count=None) -> None:
         super().__init__()
         self.data_path = data_path
@@ -108,8 +109,10 @@ class DataSet(data.Dataset):
             self.chunk_path[spos // self.CHUNK_SIZE] = save_path
         
         self.idx_map = list(range(len(raw_data_list)))
-        for i in range(0, len(self.idx_map), 1000):
-            shuffle_slice(self.idx_map, i, min(len(self.idx_map), i + 1000))
+        
+        n = len(self.idx_map)
+        for i in range(0, n, self.CHUNK_SIZE * 2):
+            shuffle_slice(self.idx_map, i, min(n, i + self.CHUNK_SIZE * 2))
 
     @functools.lru_cache(maxsize=2)
     def get_chunk(self, idx):
@@ -148,9 +151,9 @@ def verification(labels: List[str], hidden: torch.Tensor, similarity: torch.nn.M
     l_index = [i for i in range(n) for j in range(i + 1, n)]
     r_index = [j for i in range(n) for j in range(i + 1, n)]
 
-    logger.debug(hidden)
+    # logger.debug(hidden)
     outputs: torch.Tensor = similarity(hidden[l_index], hidden[r_index])
-    logger.debug(outputs)
+    # logger.debug(outputs)
     t_outputs = outputs > 0
 
     results = [labels[i] == labels[j] for i, j in zip(l_index, r_index)]
