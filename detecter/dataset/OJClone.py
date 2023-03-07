@@ -123,7 +123,9 @@ class DataSet(data.Dataset):
         idx = index // self.CHUNK_SIZE
         chunk = self.get_chunk(idx)
 
-        return chunk[index - idx * self.CHUNK_SIZE]
+        offset = min(index - idx * self.CHUNK_SIZE, len(chunk) - 1)
+
+        return chunk[offset]
 
     def __len__(self) -> int:
         return len(self.idx_map)
