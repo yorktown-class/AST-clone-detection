@@ -111,9 +111,11 @@ class DataSet(data.Dataset):
         for i in range(0, len(self.idx_map), 1000):
             shuffle_slice(self.idx_map, i, min(len(self.idx_map), i + 1000))
 
-    @functools.lru_cache(maxsize=3)
+    @functools.lru_cache(maxsize=2)
     def get_chunk(self, idx):
         path = self.chunk_path[idx]
+        logger = logging.getLogger("dataset")
+        logger.debug("debug chunk {} -> {}".format(idx, path))
         with open(path, "rb") as f:
             return torch.load(f)
 
@@ -132,10 +134,10 @@ class DataSet(data.Dataset):
 
 
 
-def DataLoader(data_path, batch_size, item_count=None):
+def DataLoader(data_path, batch_size, item_count=None, num_workers=None):
     ds = DataSet(data_path, item_count)
     print(len(ds))
-    return gDataLoader(ds, batch_size, shuffle=False, follow_batch=["x"], drop_last=True, num_workers=4)
+    return gDataLoader(ds, batch_size, shuffle=False, follow_batch=["x"], drop_last=True, num_workers=num_workers)
 
 
 def verification(labels: List[str], hidden: torch.Tensor, similarity: torch.nn.Module):
