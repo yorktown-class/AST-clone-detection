@@ -61,7 +61,7 @@ class AST_GRU(torch.nn.Module):
         assert(V.shape == (N, self.input_size))
         assert(E.shape == (2, M))
 
-        hidden = V
+        hidden = self.dense(V)
         for gru in self.dag_grus:
             hidden = gru(hidden, E)
 
