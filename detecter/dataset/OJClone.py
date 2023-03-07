@@ -10,6 +10,7 @@ import itertools
 import multiprocessing
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
+import functools
 
 # from .collate import collate_fn
 from ..parser import code2tree
@@ -64,7 +65,7 @@ def convert(data_list: List) -> List[Tuple[str, Tree]]:
     sentence2emb = SentenceTransformer('all-MiniLM-L6-v2')
     embedding_list = sentence2emb.encode(
         node_list,
-        batch_size=128,
+        batch_size=1024,
         show_progress_bar=True, 
         device="cuda")
     
@@ -80,47 +81,52 @@ def convert(data_list: List) -> List[Tuple[str, Tree]]:
 
 
 class DataSet(data.Dataset):
+    CHUNK_SIZE = 1000
     def __init__(self, data_path, item_count=None) -> None:
         super().__init__()
         self.data_path = data_path
-        self.data = []
+        self.chunk_path = dict() # int -> str
 
-        s_item_count = "" if item_count == None else "@{}".format(item_count)
-        save_path = data_path + s_item_count + ".pt"
+        with open(data_path, "r") as f:
+            lines = f.readlines()
+        raw_data_list = [json.loads(line) for line in lines]
+        if item_count:
+            raw_data_list = raw_data_list[:min(item_count, len(raw_data_list))]
 
-        try:
-            with open(save_path, "rb") as f:
-                self.data = torch.load(f)
-        except IOError:
-            with open(data_path, "r") as f:
-                lines = f.readlines()
-            data_list = [json.loads(line) for line in lines]
-            if item_count:
-                data_list = data_list[:min(item_count, len(data_list))]
-            self.data = convert(data_list)
-            with open(save_path, "wb") as f:
-                torch.save(self.data, f)
+        for spos in range(0, len(raw_data_list), self.CHUNK_SIZE):
+            tpos = min(spos + self.CHUNK_SIZE, len(raw_data_list))
 
-        label_map = dict()
-        for idx, (label, tree) in enumerate(self.data):
-            label_map[label] = label_map.get(label, []) + [idx]
-
-        idxset_list = label_map.values() # [[...], [...]]
-        max_len = max(len(idxset) for idxset in idxset_list)
-        idx_map = list(itertools.chain(*idxset_list))
-        for i in range(0, len(idx_map), max_len * 2):
-            shuffle_slice(idx_map, i, min(len(idx_map), i + 2 * max_len))
+            raw_data_slice = raw_data_list[spos: tpos]
+            save_path = data_path + "@" + str(tpos) + ".pt"
+            try:
+                with open(save_path, "rb") as f:
+                    pass
+            except IOError:
+                data_slice = convert(raw_data_slice)
+                with open(save_path, "wb") as f:
+                    torch.save(data_slice, f)
+            self.chunk_path[spos // self.CHUNK_SIZE] = save_path
         
-        slice_data = [[idx_map[j] for j in range(i, i + 10)] for i in range(len(idx_map) // 10)]
-        random.shuffle(slice_data)
-        self.idx_map = list(itertools.chain(*slice_data))
+        self.idx_map = list(range(len(raw_data_list)))
+        for i in range(0, len(self.idx_map), 1000):
+            shuffle_slice(self.idx_map, i, min(len(self.idx_map), i + 1000))
+
+    @functools.lru_cache(maxsize=3)
+    def get_chunk(self, idx):
+        path = self.chunk_path[idx]
+        with open(path, "rb") as f:
+            return torch.load(f)
 
     def __getitem__(self, index) -> Tuple[str, Tree]:
         index = self.idx_map[index]
-        return self.data[index]
+        
+        idx = index // self.CHUNK_SIZE
+        chunk = self.get_chunk(idx)
+
+        return chunk[index - idx * self.CHUNK_SIZE]
 
     def __len__(self) -> int:
-        return len(self.data)
+        return len(self.idx_map)
 
 
 
