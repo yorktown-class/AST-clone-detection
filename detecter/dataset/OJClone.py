@@ -11,6 +11,7 @@ import multiprocessing
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import functools
+import math
 
 # from .collate import collate_fn
 from ..parser import code2tree
@@ -164,12 +165,49 @@ class SubRandomSampler(data.Sampler):
         return n // m * m
 
 
+
+def collate_fn(batch: List[Union[str, Tree]]):
+    max_n = 0
+    label_list = []
+    node_list = []
+    mask_list = []
+    for label, tree in batch:
+        label_list.append(label)
+        node: torch.Tensor = tree.x
+        edge: torch.Tensor = tree.edge_index
+        
+        n, _ = node.shape
+        _, m = edge.shape
+
+        mask = ~torch.eye(n, dtype=torch.bool)
+        for _ in range(int(math.log(m, 2))):
+            mask[edge[1, :]] &= mask[edge[0, :]]
+        
+        max_n = max(n, max_n)
+        node_list.append(node)
+        mask_list.append(mask)
+    
+    node_batch = torch.nn.utils.rnn.pad_sequence(node_list)
+    
+    mask_base = ~torch.eye(max_n, dtype=torch.bool)
+    mask_batch = torch.broadcast_to(mask_base, (len(batch), max_n, max_n))
+
+    for idx, mask in enumerate(mask_list):
+        n, m = mask.shape
+        mask_batch[idx, :n, :m] = mask
+    return label_list, node_batch, mask_batch
+
+
 def DataLoader(data_path, batch_size, item_count=None):
     ds = DataSet(data_path, item_count)
     print(len(ds))
     print(config.NUM_CORE)
-    return gDataLoader(ds, batch_size, shuffle=False, follow_batch=["x"], drop_last=True, num_workers=config.NUM_CORE, sampler=SubRandomSampler(ds))
+    # return gDataLoader(ds, batch_size, shuffle=False, follow_batch=["x"], drop_last=True, num_workers=config.NUM_CORE, sampler=SubRandomSampler(ds), collate_fn=collate_fn)
 
+    return data.DataLoader(ds, 
+                           batch_size=batch_size,
+                           sampler=SubRandomSampler(ds),
+                           collate_fn=collate_fn)
 
 
 # loss_func = torch.nn.MSELoss()

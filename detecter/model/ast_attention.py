@@ -6,14 +6,21 @@ logger = logging.getLogger("ast_attention")
 
 class AttentionLayer(torch.nn.Module):
 
-    def __init__(self, hidden_size: int) -> None:
+    def __init__(self, hidden_size: int, num_heads: int=1) -> None:
         super().__init__()
-        self.attn = torch.nn.MultiheadAttention(hidden_size, num_heads=2)
+        self.num_heads = num_heads
+        self.hidden_size = hidden_size
+        self.attn = torch.nn.MultiheadAttention(hidden_size, num_heads=num_heads)
         self.norm = torch.nn.LayerNorm(hidden_size)
         self.drop = torch.nn.Dropout(p=0.3)
     
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        output, _ = self.attn.forward(input, input, input, attn_mask=mask)
+        B, L, _ = mask.shape
+        assert(mask.shape == (B, L, L))
+        assert(input.shape == (L, B, self.hidden_size))
+
+        output, _ = self.attn(
+            input, input, input, attn_mask=mask.repeat_interleave(self.num_heads, dim=0))
         output = self.norm(output)
         return input + self.drop(output)
 
@@ -34,9 +41,9 @@ class FCLayer(torch.nn.Module):
 
 class EncodeLayer(torch.nn.Module):
 
-    def __init__(self, hidden_size: int) -> None:
+    def __init__(self, hidden_size: int, num_heads: int) -> None:
         super().__init__()
-        self.attn = AttentionLayer(hidden_size)
+        self.attn = AttentionLayer(hidden_size, num_heads)
         self.fc = FCLayer(hidden_size)
     
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -45,7 +52,7 @@ class EncodeLayer(torch.nn.Module):
 
 class AstAttention(torch.nn.Module):
     
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int) -> None:
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_heads: int = 1) -> None:
         super().__init__()
 
         self.input_size = input_size
@@ -54,25 +61,21 @@ class AstAttention(torch.nn.Module):
 
         self.dense = torch.nn.Linear(input_size, hidden_size)
         self.layers = torch.nn.ModuleList([
-            EncodeLayer(hidden_size)
+            EncodeLayer(hidden_size, num_heads)
             for _ in range(num_layers)
         ])
         self.norm = torch.nn.LayerNorm(hidden_size)
 
-    def forward(self, input: torch.Tensor, edges: torch.Tensor):
-        N, _ = input.shape
-        _, E = edges.shape
+    def forward(self, input: torch.Tensor, mask: torch.Tensor):
+        N, B, _ = input.shape
 
-        assert(input.shape == (N, self.input_size))
-        assert(edges.shape == (2, E))
+        assert(input.shape == (N, B, self.input_size))
 
-        with torch.no_grad():
-            mask = ~torch.eye(N, dtype=torch.bool, device=input.device)
-            for _ in range(int(math.log(E, 2)) + 1):
-                mask[edges[1, :]] &= mask[edges[0, :]]
-        
-        input = self.dense(input)
+        hidden = self.dense(input)
         for layer in self.layers:
-            input = layer(input, mask)
+            hidden = layer(hidden, mask)
+            # logger.debug("hidden {}".format(hidden))
 
-        return self.norm(input)
+        output = self.norm(hidden)
+        output = torch.sum(output, dim=0, keepdim=False)
+        return output
