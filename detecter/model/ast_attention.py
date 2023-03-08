@@ -1,7 +1,8 @@
 import torch
 import math
 import logging
-import config
+
+from .. import config
 
 logger = logging.getLogger("ast_attention")
 
