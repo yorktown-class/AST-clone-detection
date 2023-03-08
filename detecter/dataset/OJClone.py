@@ -87,12 +87,15 @@ class DataSet(data.Dataset):
         super().__init__()
         self.data_path = data_path
         self.chunk_path = dict() # int -> str
+        self.length = 0
 
         with open(data_path, "r") as f:
             lines = f.readlines()
         raw_data_list = [json.loads(line) for line in lines]
         if item_count:
             raw_data_list = raw_data_list[:min(item_count, len(raw_data_list))]
+        
+        self.length = len(raw_data_list)
 
         for spos in range(0, len(raw_data_list), self.CHUNK_SIZE):
             tpos = min(spos + self.CHUNK_SIZE, len(raw_data_list))
@@ -108,11 +111,11 @@ class DataSet(data.Dataset):
                     torch.save(data_slice, f)
             self.chunk_path[spos // self.CHUNK_SIZE] = save_path
         
-        self.idx_map = list(range(len(raw_data_list)))
+        # self.idx_map = list(range(len(raw_data_list)))
         
-        n = len(self.idx_map)
-        for i in range(0, n, self.CHUNK_SIZE * 2):
-            shuffle_slice(self.idx_map, i, min(n, i + self.CHUNK_SIZE * 2))
+        # n = len(self.idx_map)
+        # for i in range(0, n, self.CHUNK_SIZE * 2):
+        #     shuffle_slice(self.idx_map, i, min(n, i + self.CHUNK_SIZE * 2))
 
     @functools.lru_cache(maxsize=config.LRU_CACHE_SIZE)
     def get_chunk(self, idx):
@@ -123,7 +126,7 @@ class DataSet(data.Dataset):
             return torch.load(f)
 
     def __getitem__(self, index) -> Tuple[str, Tree]:
-        index = self.idx_map[index]
+        # index = self.idx_map[index]
         
         idx = index // self.CHUNK_SIZE
         chunk = self.get_chunk(idx)
@@ -133,16 +136,44 @@ class DataSet(data.Dataset):
         return chunk[offset]
 
     def __len__(self) -> int:
-        return len(self.idx_map)
+        return self.length
 
+
+
+class SubRandomSampler(data.Sampler):
+    def __init__(self, data_source: DataSet) -> None:
+        self.data_source = data_source
+
+    def __iter__(self):
+        logger = logging.getLogger("iter")
+
+        n = len(self.data_source)
+        m = self.data_source.CHUNK_SIZE
+        idx = list(range(n // m))
+        random.shuffle(idx)
+        index = [i * m + j for i in idx for j in range(m)]
+        for i in range(0, len(index) - 2 * m + 1, m):
+            shuffle_slice(index, i, i + 2 * m)
+        
+        logger.debug("index {}".format(index))
+        return iter(index)
+    
+    def __len__(self):
+        n = len(self.data_source)
+        m = self.data_source.CHUNK_SIZE
+        return n // m * m
 
 
 def DataLoader(data_path, batch_size, item_count=None):
     ds = DataSet(data_path, item_count)
     print(len(ds))
     print(config.NUM_CORE)
-    return gDataLoader(ds, batch_size, shuffle=False, follow_batch=["x"], drop_last=True, num_workers=config.NUM_CORE)
+    return gDataLoader(ds, batch_size, shuffle=False, follow_batch=["x"], drop_last=True, num_workers=config.NUM_CORE, sampler=SubRandomSampler(ds))
 
+
+
+# loss_func = torch.nn.MSELoss()
+loss_func = torch.nn.CrossEntropyLoss()
 
 def verification(labels: List[str], hidden: torch.Tensor, similarity: torch.nn.Module):
     logger = logging.getLogger("verification")
@@ -155,7 +186,7 @@ def verification(labels: List[str], hidden: torch.Tensor, similarity: torch.nn.M
     # logger.debug(hidden)
     outputs: torch.Tensor = similarity(hidden[l_index], hidden[r_index])
     # logger.debug(outputs)
-    t_outputs = outputs > 0
+    t_outputs = outputs[:, 1] > outputs[:, 0]
 
     results = [labels[i] == labels[j] for i, j in zip(l_index, r_index)]
     results = torch.tensor(results, dtype=torch.bool, device=hidden.device)
@@ -165,12 +196,18 @@ def verification(labels: List[str], hidden: torch.Tensor, similarity: torch.nn.M
     fp = torch.count_nonzero(torch.logical_and(t_outputs, ~results)).item()
     fn = torch.count_nonzero(torch.logical_and(~t_outputs, results)).item()
 
-    loss_func = torch.nn.BCEWithLogitsLoss()
-    loss: torch.Tensor = loss_func(outputs, results.float())
+    # loss_func = torch.nn.BCEWithLogitsLoss()
+    # loss: torch.Tensor = loss_func(outputs, results.float())
+    # loss.backward()
+
+    # loss: torch.Tensor = loss_func(torch.relu(outputs), torch.where(results, 1, 0).float())
+    # loss.backward()
+    loss = loss_func(outputs, results.long())
     loss.backward()
-    
+
     try:
         logger = logging.getLogger("verification")
+        logger.debug("loss  {}".format(loss.item()))
         logger.debug("tp {} tn {} fp {} fn {}".format(tp, tn, fp, fn))
         logger.debug("ratio {}".format((tp + tn) / (tp + fp + fn + tn)))
         
@@ -180,4 +217,4 @@ def verification(labels: List[str], hidden: torch.Tensor, similarity: torch.nn.M
     except:
         pass
 
-    return tp, tn, fp, fn
+    return tp, tn, fp, fn, loss
