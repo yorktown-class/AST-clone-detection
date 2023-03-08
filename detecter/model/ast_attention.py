@@ -1,6 +1,7 @@
 import torch
 import math
 import logging
+import config
 
 logger = logging.getLogger("ast_attention")
 
@@ -12,7 +13,7 @@ class AttentionLayer(torch.nn.Module):
         self.hidden_size = hidden_size
         self.attn = torch.nn.MultiheadAttention(hidden_size, num_heads=num_heads)
         self.norm = torch.nn.LayerNorm(hidden_size)
-        self.drop = torch.nn.Dropout(p=0.3)
+        self.drop = torch.nn.Dropout(p=config.DROP_OUT)
     
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         B, L, _ = mask.shape
@@ -31,7 +32,7 @@ class FCLayer(torch.nn.Module):
         super().__init__()
         self.w1 = torch.nn.Linear(hidden_size, hidden_size * 2)
         self.w2 = torch.nn.Linear(hidden_size * 2, hidden_size)
-        self.drop = torch.nn.Dropout(p=0.3)
+        self.drop = torch.nn.Dropout(p=config.DROP_OUT)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         hidden = torch.relu(self.w1(input))
@@ -77,5 +78,6 @@ class AstAttention(torch.nn.Module):
             # logger.debug("hidden {}".format(hidden))
 
         output = self.norm(hidden)
-        output = torch.sum(output, dim=0, keepdim=False)
+        output = torch.mean(output, dim=0, keepdim=False)
+        # output = torch.sum(output, dim=0, keepdim=False)
         return output
