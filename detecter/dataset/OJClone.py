@@ -83,7 +83,7 @@ class DataSet(data.Dataset):
             label_list = [raw["label"] for raw in raw_data_list]
             code_tree_list = convert_code(raw_data_list)
             data_list = [(label, V, E) for label, (V, E) in zip(label_list, code_tree_list)]
-            self.data_list = [(l, v, e) for l, v, e in data_list if len(v) < 1024]
+            self.data_list = [(l, v, e) for l, v, e in data_list if len(v) < config.MAX_NODE_COUNT]
             
             nodes_list = [v for l, v, e in self.data_list]
             self.word_dict = create_word_dict(list(itertools.chain(*nodes_list)))
