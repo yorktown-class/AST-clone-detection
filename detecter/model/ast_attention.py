@@ -33,11 +33,13 @@ class FCLayer(torch.nn.Module):
         super().__init__()
         self.w1 = torch.nn.Linear(hidden_size, hidden_size * 2)
         self.w2 = torch.nn.Linear(hidden_size * 2, hidden_size)
+        self.norm = torch.nn.LayerNorm(hidden_size)
         self.drop = torch.nn.Dropout(p=config.DROP_OUT)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         hidden = torch.relu(self.w1(input))
         output = self.w2(hidden)
+        output = self.norm(output)
         return input + self.drop(output)
 
 
@@ -79,6 +81,6 @@ class AstAttention(torch.nn.Module):
             # logger.debug("hidden {}".format(hidden))
 
         output = self.norm(hidden)
-        output = torch.mean(output, dim=0, keepdim=False)
+        # output = torch.mean(output, dim=0, keepdim=False)
         # output = torch.sum(output, dim=0, keepdim=False)
         return output

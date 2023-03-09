@@ -1,27 +1,27 @@
 from typing import *
 
 import torch
-from torch_geometric.data import Data
-from torch_geometric.typing import OptTensor
-from sentence_transformers import SentenceTransformer
+# from torch_geometric.data import Data
+# from torch_geometric.typing import OptTensor
+# from sentence_transformers import SentenceTransformer
 
 from . import parse_c, parse_java
 
 
-class Tree(Data):
-    def __init__(self, x: OptTensor = None, edge_index: OptTensor = None, root: int = None, edge_attr: OptTensor = None, y: OptTensor = None, pos: OptTensor = None, **kwargs):
-        super().__init__(x, edge_index, edge_attr, y, pos, **kwargs)
-        self.root = root
+# class Tree(Data):
+#     def __init__(self, x: OptTensor = None, edge_index: OptTensor = None, root: int = None, edge_attr: OptTensor = None, y: OptTensor = None, pos: OptTensor = None, **kwargs):
+#         super().__init__(x, edge_index, edge_attr, y, pos, **kwargs)
+#         self.root = root
     
-    # def __cat_dim__(self, key: str, value: Any, *args, **kwargs) -> Any:
-    #     if key == 'root':
-    #         return None
-    #     return super().__cat_dim__(key, value, *args, **kwargs)
+#     # def __cat_dim__(self, key: str, value: Any, *args, **kwargs) -> Any:
+#     #     if key == 'root':
+#     #         return None
+#     #     return super().__cat_dim__(key, value, *args, **kwargs)
 
-    def __inc__(self, key: str, value: Any, *args, **kwargs) -> Any:
-        if key == 'root':
-            return self.x.shape[0]
-        return super().__inc__(key, value, *args, **kwargs)
+#     def __inc__(self, key: str, value: Any, *args, **kwargs) -> Any:
+#         if key == 'root':
+#             return self.x.shape[0]
+#         return super().__inc__(key, value, *args, **kwargs)
 
 
 class ParseError(Exception):
@@ -39,7 +39,7 @@ ast_to_dict = {
 }
 
 
-sentence2emb = SentenceTransformer('all-MiniLM-L6-v2').cuda()
+# sentence2emb = SentenceTransformer('all-MiniLM-L6-v2').cuda()
 
 
 def parse(code: str, lang: str) -> Tuple[List[str], Tuple[List[int], List[int]]]:

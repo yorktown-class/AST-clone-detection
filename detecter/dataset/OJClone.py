@@ -125,7 +125,9 @@ def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
     n = node_batch.shape[0]
 
     mask_base = ~torch.eye(n, dtype=torch.bool)
-    mask_batch = torch.broadcast_to(mask_base, (len(batch), n, n))
+    mask_batch = mask_base.repeat(len(batch), 1, 1)
+    # print(mask_batch.shape)
+    # mask_batch = torch.broadcast_to(mask_base, (len(batch), n, n))
 
     for idx, mask in enumerate(mask_list):
         n, m = mask.shape
