@@ -14,7 +14,7 @@ from .. import config
 from ..parser import code2tree
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache()
 def word2vec(word: str):
     from sentence_transformers import SentenceTransformer
 
@@ -115,45 +115,56 @@ class DataSet(data.Dataset):
     def __len__(self) -> int:
         return len(self.data_list)
 
+
+
+def merge(batch1, batch2):
+    labeli, nodesi, maski = batch1
+    labelj, nodesj, maskj = batch2
+    leni = nodesi.shape[0]
+    lenj = nodesj.shape[0]
+    nodes = torch.cat([word2vec("<CODE_COMPARE>").reshape(1, -1), nodesi, nodesj], dim=0)
+    mask = torch.ones((1 + leni + lenj, 1 + leni + lenj), dtype=torch.bool)
+    mask[0, :] = False
+    mask[1: leni+1, 1: leni+1] = maski
+    mask[leni+1: leni+lenj+1, leni+1: leni+lenj+1] = maskj
+    return labeli == labelj, nodes, mask
+
 class BiDataSet(data.Dataset):
     def __init__(self, dataset: DataSet) -> None:
         super().__init__()
         self.dataset = dataset
-        self.index_map = list(range(len(self.dataset)))
+        n = len(dataset)
+        self.index_map = list(range(n))
+        self.separator = n
 
-        seed = 56
-        random.seed(seed)
-        k = len(self.dataset) // 500
-        for _ in range(k):
-            i_idx = random.randint(0, len(self.dataset) - 500)
-            j_idx = random.randint(0, len(self.dataset) - 500)
-            for k in range(0, 500):
-                i, j = i_idx + k, j_idx + k
-                self.index_map[i], self.index_map[j] = self.index_map[j], self.index_map[i]
-        
-        for _ in range(k - 1):
-            i = k * 500
-            j = i + 1000
-            sub = self.index_map[i: j]
-            random.shuffle(sub)
-            self.index_map[i: j] = sub
+        self.randlist = torch.randperm(n).tolist()
     
     def __getitem__(self, index):
-        i = index * 2
-        j = index * 2 + 1
-        labeli, nodesi, maski = self.dataset[i]
-        labelj, nodesj, maskj = self.dataset[j]
-        leni = nodesi.shape[0]
-        lenj = nodesj.shape[0]
-        nodes = torch.cat([word2vec("<CODE_COMPARE>").reshape(1, -1), nodesi, nodesj], dim=0)
-        mask = torch.ones((1 + leni + lenj, 1 + leni + lenj), dtype=torch.bool)
-        mask[0, :] = False
-        mask[1: leni+1, 1: leni+1] = maski
-        mask[leni+1: leni+lenj+1, leni+1: leni+lenj+1] = maskj
-        return labeli == labelj, nodes, mask
+        if index < self.separator:
+            i, j = index, index
+        else:
+            index -= self.separator
+            i, j = index, self.randlist[index]
+        return merge(self.dataset[i], self.dataset[j])
 
     def __len__(self) -> int:
-        return len(self.dataset) // 2
+        return self.separator * 2
+
+
+class Sampler(data.Sampler):
+    def __init__(self, data_source: DataSet) -> None:
+        super().__init__(data_source)
+        self.data_source = data_source
+    
+    def __len__(self) -> int:
+        return len(self.data_source) * 2
+    
+    def __iter__(self):
+        n = len(self.data_source)
+        rnd_list = torch.randperm(n).tolist()
+        for i in range(n):
+            yield(i)
+            yield(rnd_list[i])
 
 
 def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
@@ -179,5 +190,5 @@ def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
     return label_batch, node_batch, mask_batch
 
 
-def getDataLoader(dataset: DataSet, **kwargs):
-    return data.DataLoader(dataset, num_workers=2, collate_fn=collate_fn, **kwargs)
+def getDataLoader(dataset: data.Dataset, **kwargs):
+    return data.DataLoader(dataset, num_workers=config.NUM_CORE, collate_fn=collate_fn, **kwargs)
