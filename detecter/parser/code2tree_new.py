@@ -39,12 +39,14 @@ def parse(code: str, lang: str = "c") -> Tuple[List[str], Tuple[List[int], List[
         if node.is_named and not node.children:
             desc = node.text.decode('utf-8')
             if is_punctuation(desc) or is_comment(desc):
-                return
+                return None
 
         V.append(desc)
         vid = len(V) - 1
         for child in node.children:
             child_vid = walk(child)
+            if child_vid is None:
+                continue
             E[0].append(child_vid)
             E[1].append(vid)
 
