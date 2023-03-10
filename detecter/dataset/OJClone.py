@@ -11,7 +11,7 @@ import itertools
 import random
 
 from .. import config
-from ..parser import code2tree
+from ..parser import code2tree_new as code2tree
 
 
 @functools.lru_cache()
