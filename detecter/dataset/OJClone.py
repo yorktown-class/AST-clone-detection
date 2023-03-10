@@ -8,17 +8,18 @@ import multiprocessing
 from tqdm import tqdm
 import math
 import itertools
+import random
 
 from .. import config
 from ..parser import code2tree
 
 
-# @functools.lru_cache(maxsize=None)
-# def word2vec(word: str):
-#     from sentence_transformers import SentenceTransformer
+@functools.lru_cache(maxsize=None)
+def word2vec(word: str):
+    from sentence_transformers import SentenceTransformer
 
-#     sentence2emb = SentenceTransformer('all-MiniLM-L6-v2')
-#     return sentence2emb.encode(word, device="cuda", show_progress_bar=False)
+    sentence2emb = SentenceTransformer('all-MiniLM-L6-v2')
+    return sentence2emb.encode(word, device="cuda", show_progress_bar=False, convert_to_tensor=True).cpu()
 
 
 def create_word_dict(word_list: List[str]) -> Dict[str, torch.Tensor]:
@@ -109,16 +110,58 @@ class DataSet(data.Dataset):
         for _ in range(int(math.log(m, 2))):
             mask[tensorE[1, :]] &= mask[tensorE[0, :]]
         
-        return label, tensorV, mask
+        return int(label) - 1, tensorV, mask
 
     def __len__(self) -> int:
         return len(self.data_list)
+
+class BiDataSet(data.Dataset):
+    def __init__(self, dataset: DataSet) -> None:
+        super().__init__()
+        self.dataset = dataset
+        self.index_map = list(range(len(self.dataset)))
+
+        seed = 56
+        random.seed(seed)
+        k = len(self.dataset) // 500
+        for _ in range(k):
+            i_idx = random.randint(0, len(self.dataset) - 500)
+            j_idx = random.randint(0, len(self.dataset) - 500)
+            for k in range(0, 500):
+                i, j = i_idx + k, j_idx + k
+                self.index_map[i], self.index_map[j] = self.index_map[j], self.index_map[i]
+        
+        for _ in range(k - 1):
+            i = k * 500
+            j = i + 1000
+            sub = self.index_map[i: j]
+            random.shuffle(sub)
+            self.index_map[i: j] = sub
+    
+    def __getitem__(self, index):
+        i = index * 2
+        j = index * 2 + 1
+        labeli, nodesi, maski = self.dataset[i]
+        labelj, nodesj, maskj = self.dataset[j]
+        leni = nodesi.shape[0]
+        lenj = nodesj.shape[0]
+        nodes = torch.cat([word2vec("<CODE_COMPARE>").reshape(1, -1), nodesi, nodesj], dim=0)
+        mask = torch.ones((1 + leni + lenj, 1 + leni + lenj), dtype=torch.bool)
+        mask[0, :] = False
+        mask[1: leni+1, 1: leni+1] = maski
+        mask[leni+1: leni+lenj+1, leni+1: leni+lenj+1] = maskj
+        return labeli == labelj, nodes, mask
+
+    def __len__(self) -> int:
+        return len(self.dataset) // 2
 
 
 def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
     label_list = [label for label, nodes, mask in batch]
     nodes_list = [nodes for label, nodes, mask in batch]
     mask_list = [mask for label, nodes, mask in batch]
+
+    label_batch = torch.tensor(label_list, dtype=torch.long)
 
     node_batch = torch.nn.utils.rnn.pad_sequence(nodes_list)
 
@@ -133,7 +176,7 @@ def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
         n, m = mask.shape
         mask_batch[idx, :n, :m] = mask
     
-    return label_list, node_batch, mask_batch
+    return label_batch, node_batch, mask_batch
 
 
 def getDataLoader(dataset: DataSet, **kwargs):

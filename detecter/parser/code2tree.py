@@ -55,7 +55,7 @@ def parse(code: str, lang: str) -> Tuple[List[str], Tuple[List[int], List[int]]]
     V: List[int] = list()
     E: Tuple[List, List] = (list(), list())
 
-    V.append("CODE_ROOT")
+    V.append("<CODE_ROOT>")
 
     def get_VE_from_dict(tree: Dict, parent_id: int):
         assert(isinstance(tree, (str, dict)))
