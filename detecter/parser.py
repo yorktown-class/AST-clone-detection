@@ -1,6 +1,7 @@
 from typing import *
-import tree_sitter
 
+import tree_sitter
+from . import tree_tools
 
 class ParseError(Exception):
     pass
@@ -23,7 +24,7 @@ def is_comment(sent: str) -> bool:
     return False
 
 
-def parse(code: str, lang: str = "c") -> Tuple[List[str], Tuple[List[int], List[int]]]:
+def parse(code: str, lang: str = "c") -> tree_tools.TreeVE:
     parser = tree_sitter.Parser()
     parser.set_language(tree_sitter.Language("build/lang.so", lang))
     try:
