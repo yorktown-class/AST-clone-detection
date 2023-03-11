@@ -2,6 +2,13 @@
 基于AST和注意力机制的代码克隆检测
 
 
+## Requirements
+
+```
+tree_sitter
+sentence_transformers
+```
+
 ## Dataset
 
 主要使用的数据集为[OJClone](https://arxiv.org/pdf/1409.5718.pdf)。
