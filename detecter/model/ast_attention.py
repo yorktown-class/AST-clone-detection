@@ -1,20 +1,17 @@
 import torch
-import math
 import logging
 
-from .. import config
-
-logger = logging.getLogger("ast_attention")
+from .. import logger
 
 class AttentionLayer(torch.nn.Module):
 
-    def __init__(self, hidden_size: int, num_heads: int=1) -> None:
+    def __init__(self, hidden_size: int, num_heads: int = 1, dropout: float = 0.5) -> None:
         super().__init__()
         self.num_heads = num_heads
         self.hidden_size = hidden_size
         self.attn = torch.nn.MultiheadAttention(hidden_size, num_heads=num_heads)
         self.norm = torch.nn.LayerNorm(hidden_size)
-        self.drop = torch.nn.Dropout(p=config.DROP_OUT)
+        self.drop = torch.nn.Dropout(p=dropout)
     
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         B, L, _ = mask.shape
@@ -29,12 +26,12 @@ class AttentionLayer(torch.nn.Module):
 
 class FCLayer(torch.nn.Module):
 
-    def __init__(self, hidden_size: int) -> None:
+    def __init__(self, hidden_size: int, dropout: float=0.5) -> None:
         super().__init__()
         self.w1 = torch.nn.Linear(hidden_size, hidden_size * 2)
         self.w2 = torch.nn.Linear(hidden_size * 2, hidden_size)
         self.norm = torch.nn.LayerNorm(hidden_size)
-        self.drop = torch.nn.Dropout(p=config.DROP_OUT)
+        self.drop = torch.nn.Dropout(p=dropout)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         hidden = torch.relu(self.w1(input))
@@ -45,10 +42,10 @@ class FCLayer(torch.nn.Module):
 
 class EncodeLayer(torch.nn.Module):
 
-    def __init__(self, hidden_size: int, num_heads: int) -> None:
+    def __init__(self, hidden_size: int, num_heads: int, dropout: float=0.5) -> None:
         super().__init__()
-        self.attn = AttentionLayer(hidden_size, num_heads)
-        self.fc = FCLayer(hidden_size)
+        self.attn = AttentionLayer(hidden_size, num_heads, dropout)
+        self.fc = FCLayer(hidden_size, dropout)
     
     def forward(self, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         return self.fc(self.attn(input, mask))
@@ -56,7 +53,7 @@ class EncodeLayer(torch.nn.Module):
 
 class AstAttention(torch.nn.Module):
     
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_heads: int = 1) -> None:
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_heads: int = 1, dropout: float = 0.5) -> None:
         super().__init__()
 
         self.input_size = input_size
@@ -65,7 +62,7 @@ class AstAttention(torch.nn.Module):
 
         self.dense = torch.nn.Linear(input_size, hidden_size)
         self.layers = torch.nn.ModuleList([
-            EncodeLayer(hidden_size, num_heads)
+            EncodeLayer(hidden_size, num_heads, dropout)
             for _ in range(num_layers)
         ])
         self.norm = torch.nn.LayerNorm(hidden_size)
@@ -78,9 +75,6 @@ class AstAttention(torch.nn.Module):
         hidden = self.dense(input)
         for layer in self.layers:
             hidden = layer(hidden, mask)
-            # logger.debug("hidden {}".format(hidden))
 
         output = self.norm(hidden)
-        # output = torch.mean(output, dim=0, keepdim=False)
-        # output = torch.sum(output, dim=0, keepdim=False)
         return output

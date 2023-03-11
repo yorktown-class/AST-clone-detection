@@ -5,6 +5,7 @@ __pycache__/
 *.pt
 *.bin
 *.ipynb
+!template.ipynb
 
 # C extensions
 *.so

@@ -3,45 +3,24 @@ from typing import *
 import torch
 from torch.utils import data
 import json
-import functools
 import multiprocessing
 from tqdm import tqdm
 import math
 import itertools
-import random
+import numpy
 
 from .. import config
-from ..parser import code2tree_new as code2tree
-
-
-@functools.lru_cache()
-def word2vec(word: str):
-    from sentence_transformers import SentenceTransformer
-
-    sentence2emb = SentenceTransformer('all-MiniLM-L6-v2')
-    return sentence2emb.encode(word, device="cuda", show_progress_bar=False, convert_to_tensor=True).cpu()
-
-
-def create_word_dict(word_list: List[str]) -> Dict[str, torch.Tensor]:
-    word_list = list(set(word_list))
-    
-    from sentence_transformers import SentenceTransformer
-
-    sentence2emb = SentenceTransformer('all-MiniLM-L6-v2')
-    result = sentence2emb.encode(word_list, 
-                                 batch_size=config.WORD2VEC_BATCH_SIZE, 
-                                 device="cuda")
-    return dict(zip(word_list, result))
-
+from .. import parser
+from ..word2vec import word2vec, create_word_dict
 
 
 def convert(code: Dict) -> Tuple[List[str], Tuple[List[int], List[int]]]:
     code_string = code["code"]
     index = code["index"]
     try:
-        V, E = code2tree.parse(code_string, "c")
+        V, E = parser.parse(code_string, "c")
         return (V, E)
-    except code2tree.ParseError as err:
+    except parser.ParseError as err:
         logger = multiprocessing.get_logger()
         logger.warn('parse error ("index": "{}")'.format(index))
         return None
@@ -60,7 +39,7 @@ def convert_code(code_list: List[Dict]):
 
 
 class DataSet(data.Dataset):
-    def __init__(self, data_path, item_count=None) -> None:
+    def __init__(self, data_path, item_count=None, max_node_count=None) -> None:
         super().__init__()
         self.data_path = data_path
         self.data_list = list() # tuple(label, V, E)
@@ -83,8 +62,7 @@ class DataSet(data.Dataset):
             
             label_list = [raw["label"] for raw in raw_data_list]
             code_tree_list = convert_code(raw_data_list)
-            data_list = [(label, V, E) for label, (V, E) in zip(label_list, code_tree_list)]
-            self.data_list = [(l, v, e) for l, v, e in data_list if len(v) < config.MAX_NODE_COUNT]
+            self.data_list = [(label, V, E) for label, (V, E) in zip(label_list, code_tree_list)]
             
             nodes_list = [v for l, v, e in self.data_list]
             self.word_dict = create_word_dict(list(itertools.chain(*nodes_list)))
@@ -94,9 +72,11 @@ class DataSet(data.Dataset):
                     "data_list": self.data_list, 
                     "word_dict": self.word_dict,
                 }, f)
+        
+        if max_node_count:
+            self.data_list = [(l, v, e) for l, v, e in self.data_list if len(v) <= max_node_count]
 
-    def __getitem__(self, index) -> Tuple[str, torch.Tensor, torch.Tensor]:
-        import numpy
+    def __getitem__(self, index) -> Tuple[int, torch.Tensor, torch.Tensor]:
         label, V, E = self.data_list[index]
 
         wordvec_list = [self.word_dict[v] for v in V]
@@ -115,20 +95,6 @@ class DataSet(data.Dataset):
     def __len__(self) -> int:
         return len(self.data_list)
 
-
-
-def merge(batch1, batch2):
-    labeli, nodesi, maski = batch1
-    labelj, nodesj, maskj = batch2
-    leni = nodesi.shape[0]
-    lenj = nodesj.shape[0]
-    nodes = torch.cat([word2vec("<CODE_COMPARE>").reshape(1, -1), nodesi, nodesj], dim=0)
-    mask = torch.ones((1 + leni + lenj, 1 + leni + lenj), dtype=torch.bool)
-    mask[0, :] = False
-    mask[1: leni+1, 1: leni+1] = maski
-    mask[leni+1: leni+lenj+1, leni+1: leni+lenj+1] = maskj
-    return labeli == labelj, nodes, mask
-
 class BiDataSet(data.Dataset):
     def __init__(self, dataset: DataSet) -> None:
         super().__init__()
@@ -140,31 +106,28 @@ class BiDataSet(data.Dataset):
         self.randlist = torch.randperm(n).tolist()
     
     def __getitem__(self, index):
+        def merge(batch1, batch2):
+            labeli, nodesi, maski = batch1
+            labelj, nodesj, maskj = batch2
+            leni = nodesi.shape[0]
+            lenj = nodesj.shape[0]
+            nodes = torch.cat([word2vec("<CODE_COMPARE>").reshape(1, -1), nodesi, nodesj], dim=0)
+            mask = torch.ones((1 + leni + lenj, 1 + leni + lenj), dtype=torch.bool)
+            mask[0, :] = False
+            mask[1: leni+1, 1: leni+1] = maski
+            mask[leni+1: leni+lenj+1, leni+1: leni+lenj+1] = maskj
+            return labeli == labelj, nodes, mask
+
         if index < self.separator:
             i, j = index, index
         else:
             index -= self.separator
             i, j = index, self.randlist[index]
+
         return merge(self.dataset[i], self.dataset[j])
 
     def __len__(self) -> int:
         return self.separator * 2
-
-
-class Sampler(data.Sampler):
-    def __init__(self, data_source: DataSet) -> None:
-        super().__init__(data_source)
-        self.data_source = data_source
-    
-    def __len__(self) -> int:
-        return len(self.data_source) * 2
-    
-    def __iter__(self):
-        n = len(self.data_source)
-        rnd_list = torch.randperm(n).tolist()
-        for i in range(n):
-            yield(i)
-            yield(rnd_list[i])
 
 
 def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
@@ -180,8 +143,6 @@ def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
 
     mask_base = ~torch.eye(n, dtype=torch.bool)
     mask_batch = mask_base.repeat(len(batch), 1, 1)
-    # print(mask_batch.shape)
-    # mask_batch = torch.broadcast_to(mask_base, (len(batch), n, n))
 
     for idx, mask in enumerate(mask_list):
         n, m = mask.shape
@@ -189,6 +150,3 @@ def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
     
     return label_batch, node_batch, mask_batch
 
-
-def getDataLoader(dataset: data.Dataset, **kwargs):
-    return data.DataLoader(dataset, num_workers=config.NUM_CORE, collate_fn=collate_fn, **kwargs)

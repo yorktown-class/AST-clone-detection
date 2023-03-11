@@ -3,7 +3,7 @@ from typing import *
 import torch
 import logging
 
-logger = logging.getLogger("classifier")
+from .. import logger
 
 class Classifier(torch.nn.Module):
     def __init__(self, in_features, out_features) -> None:

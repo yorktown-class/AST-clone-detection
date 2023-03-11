@@ -54,3 +54,7 @@ def parse(code: str, lang: str = "c") -> Tuple[List[str], Tuple[List[int], List[
     
     walk(tree.root_node)
     return (V, E)
+
+
+def parse_to_tensor(code: str, lang: str = "c"):
+    pass
