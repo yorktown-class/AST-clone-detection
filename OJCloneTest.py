@@ -37,7 +37,6 @@ class BiDataset(Dataset):
 		return len(self.indexs)
 	
 	def __getitem__(self, idx) -> Tuple[str, str, torch.Tensor, torch.Tensor]:
-		print("-> ", idx)
 		i, j = self.indexs[idx]
 		tree_VE_i = self.tree_VE_list[i]
 		tree_VE_j = self.tree_VE_list[j]
@@ -71,7 +70,7 @@ class ResultDict:
 		}
 		topn.append(item)
 
-		while k >= 0 and item["result"] < topn[k]["result"]:
+		while k >= 0 and item["result"] > topn[k]["result"]:
 			topn[k + 1] = topn[k]
 			k -= 1
 		topn[k + 1] = item
@@ -86,7 +85,8 @@ class ResultDict:
 		for key, topn in self.result_dict.items():
 			result = {
 				"index": key, 
-				"answers": topn
+				"answers": [item["index"] for item in topn],
+				"values": [item["result"] for item in topn]
 			}
 			output.append(json.dumps(result))
 		return output
@@ -94,7 +94,12 @@ class ResultDict:
 	def from_jsonl(self, jsonl: List[str]):
 		for line in jsonl:
 			data = json.loads(line)
-			self.result_dict[data["index"]] = data["answers"]
+			self.result_dict[data["index"]] = [
+				{
+					"index": idx, 
+					"result": value, 
+				} for idx, value in zip(data["answers"], data["values"])
+			]
 
 
 if __name__ == "__main__":
