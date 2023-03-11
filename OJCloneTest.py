@@ -13,7 +13,7 @@ from detecter import word2vec
 
 
 def parse_code_to_VE(code):
-	return parser.parse(code, "c")
+	return tree_tools.tree_VE_prune(parser.parse(code, "c"), 512) 
 
 class BiDataset(Dataset):
 	def __init__(self, path: str) -> None:
@@ -31,7 +31,7 @@ class BiDataset(Dataset):
 		print(len(self.word2vec_cache))
 
 		n = len(self.raw_data_list)
-		self.indexs = [(i, j) for i in range(500) for j in range(n)]
+		self.indexs = [(i, j) for i in range(50) for j in range(n)]
 
 	def __len__(self):
 		return len(self.indexs)
@@ -106,19 +106,24 @@ class ResultDict:
 
 if __name__ == "__main__":
 
-	model = AstAttention(384, 768, 6, 8).cuda().eval()
-	classifier = Classifier(768, 2).cuda().eval()
+	model = AstAttention(384, 768, 6, 8).eval().cuda()
+	classifier = Classifier(768, 2).eval().cuda()
 
 	save = torch.load("log/model.pt")
 	model.load_state_dict(save["model_state_dict"])
 	classifier.load_state_dict(save["classifier_state_dict"])
 
 	dataloader = DataLoader(BiDataset("dataset/OJClone/test.jsonl"),
-			 batch_size=4,
+			 batch_size=2,
 			 collate_fn=collate_fn,
 			 num_workers=0)
 
 	result_dict = ResultDict()
+
+	for p in model.parameters():
+		p.requires_grad = False
+	for p in classifier.parameters():
+		p.requires_grad = False
 
 	try:
 		with open("OJCloneTest.pt", "r") as f:
@@ -128,24 +133,27 @@ if __name__ == "__main__":
 	except IOError:
 		prev_case_idx = -1
 
-	for case_idx, (idx_list, jdx_list, nodes, mask) in enumerate(tqdm(dataloader)):
-		if case_idx <= prev_case_idx:
-			continue
 
-		with torch.no_grad():
+	with torch.no_grad():
+		for case_idx, (idx_list, jdx_list, nodes, mask) in enumerate(tqdm(dataloader)):
+			if case_idx <= prev_case_idx:
+				continue
+
 			hidden = model(nodes.cuda(), mask.cuda())
 			output = classifier(hidden)
+
 			result = output[:, 1] - output[:, 0]
 			result_list = [result[i].item() for i in range(result.shape[0])]
-		for idx, jdx, result in zip(idx_list, jdx_list, result_list):
-			result_dict.insert(idx, jdx, result)
-			# result_dict.insert(jdx, idx, result)
+			
+			for idx, jdx, result in zip(idx_list, jdx_list, result_list):
+				result_dict.insert(idx, jdx, result)
+				# result_dict.insert(jdx, idx, result)
 
-		if case_idx % 10000 == 0:
-			lines = [str(case_idx)] + result_dict.jsonl()
-			lines = [line + "\n" for line in lines]
-			with open("OJCloneTest.pt", "w") as f:
-				f.writelines(lines)
+			if case_idx % 10000 == 0:
+				lines = [str(case_idx)] + result_dict.jsonl()
+				lines = [line + "\n" for line in lines]
+				with open("OJCloneTest.pt", "w") as f:
+					f.writelines(lines)
 	
 	with open("OJCloneResult.jsonl", "w") as f:
 		lines = result_dict.jsonl()

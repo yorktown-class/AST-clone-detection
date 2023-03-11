@@ -2,11 +2,38 @@ from typing import *
 
 import torch
 import math
+import numpy
 
 TreeV = List[str]
 TreeE = Tuple[List[int], List[int]]
 TreeVE = Tuple[TreeV, TreeE]
 TreeTensor = Tuple[torch.Tensor, torch.Tensor]
+
+
+def tree_VE_prune(tree_VE: TreeVE, max_node_count = 512) -> TreeVE:
+    tree_V, Tree_E = tree_VE
+    n = len(tree_V)
+    if n <= max_node_count:
+        return tree_VE
+
+    v_out, v_in = Tree_E
+    count = [0] * len(tree_V)
+    for v in v_in:
+        count[v] += 1
+    index = numpy.argsort(count)
+
+    unremove_index = index[n - max_node_count:]
+    vid_map = list(range(n))
+
+    pruned_V = []
+    for idx, v in enumerate(tree_V):
+        if idx in unremove_index:
+            pruned_V.append(v)
+            vid_map[idx] = len(pruned_V) - 1
+    pruned_out_in = [(out_id, in_id) for out_id, in_id in zip(v_out, v_in) if out_id in unremove_index and in_id in unremove_index]
+    pruned_out = [vid_map[out_id] for out_id, _ in pruned_out_in]
+    pruned_in = [vid_map[in_id] for _, in_id in pruned_out_in]
+    return pruned_V, (pruned_out, pruned_in)
 
 
 def tree_VE_to_tensor(tree_VE: TreeVE, word2vec_cache: Dict[str, torch.Tensor] = None) -> TreeTensor:
