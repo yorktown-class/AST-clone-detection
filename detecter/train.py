@@ -55,8 +55,9 @@ def check_point(trainer: Trainer, optimizer: torch.optim.Optimizer, epoch) -> Di
     }
 
 
-def model_pt(model: torch.nn.Module, loss) -> Dict:
+def model_pt(model: torch.nn.Module, classifier: torch.nn.Module, loss) -> Dict:
     return {
         "model_state_dict": model.state_dict(),
+        "classifier_state_dict": classifier.state_dict(),
         "loss": float(loss),
     }
