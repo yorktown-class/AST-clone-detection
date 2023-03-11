@@ -53,6 +53,7 @@ def tree_VE_to_tensor(tree_VE: TreeVE, word2vec_cache: Dict[str, torch.Tensor] =
     mask = ~torch.eye(n, dtype=torch.bool)
     for _ in range(int(math.log(m, 2))):
         mask[edges[1, :]] &= mask[edges[0, :]]
+    assert(torch.any(mask[0, :]) == False)
     return nodes, mask
 
 
@@ -63,14 +64,15 @@ def merge_tree_VE(tree_VE1: TreeVE, tree_VE2: TreeVE, merge_node: str) -> TreeVE
     e1_src, e1_dst = tree_E1
     e2_src, e2_dst = tree_E2
     
-    e1_src = [v + 1 for v in e1_src]
-    e1_dst = [v + 1 for v in e1_dst]
+    e1_src = [v + 1 for v in e1_src] + [1]
+    e1_dst = [v + 1 for v in e1_dst] + [0]
     d = 1 + len(tree_V1)
-    e2_src = [v + d for v in e2_src]
-    e2_dst = [v + d for v in e2_dst]
-        
+    e2_src = [v + d for v in e2_src] + [d]
+    e2_dst = [v + d for v in e2_dst] + [0]
+    
     V = [merge_node] + tree_V1 + tree_V2
     E = (e1_src + e2_src, e1_dst + e2_dst)
+    assert(len(V) - 1 == len(E[0]))
     return V, E
 
 

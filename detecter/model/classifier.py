@@ -16,7 +16,7 @@ class Classifier(torch.nn.Module):
         self.trans = torch.nn.Linear(1, 1)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        input = torch.mean(input, dim=0, keepdim=False)
+        # input = torch.mean(input, dim=0, keepdim=False)
 
         output = self.dense(input)
         output = self.sigma(output)

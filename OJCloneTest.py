@@ -31,7 +31,7 @@ class BiDataset(Dataset):
 		print(len(self.word2vec_cache))
 
 		n = len(self.raw_data_list)
-		self.indexs = [(i, j) for i in range(50) for j in range(n)]
+		self.indexs = [(i, j) for i in range(1) for j in range(n)]
 
 	def __len__(self):
 		return len(self.indexs)
@@ -116,7 +116,7 @@ if __name__ == "__main__":
 	dataloader = DataLoader(BiDataset("dataset/OJClone/test.jsonl"),
 			 batch_size=2,
 			 collate_fn=collate_fn,
-			 num_workers=0)
+			 num_workers=2)
 
 	result_dict = ResultDict()
 
@@ -140,7 +140,10 @@ if __name__ == "__main__":
 				continue
 
 			hidden = model(nodes.cuda(), mask.cuda())
-			output = classifier(hidden)
+			# print(hidden[0])
+			# print(torch.mean(hidden, dim=0))
+			# hidden = torch.mean(hidden, dim=0)
+			output = classifier(hidden[0])
 
 			result = output[:, 1] - output[:, 0]
 			result_list = [result[i].item() for i in range(result.shape[0])]
@@ -149,7 +152,7 @@ if __name__ == "__main__":
 				result_dict.insert(idx, jdx, result)
 				# result_dict.insert(jdx, idx, result)
 
-			if case_idx % 10000 == 0:
+			if case_idx % 100 == 0:
 				lines = [str(case_idx)] + result_dict.jsonl()
 				lines = [line + "\n" for line in lines]
 				with open("OJCloneTest.pt", "w") as f:
