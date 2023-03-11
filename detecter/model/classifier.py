@@ -16,9 +16,6 @@ class Classifier(torch.nn.Module):
         self.trans = torch.nn.Linear(1, 1)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        L, B, F = input.shape
-        assert(F == self.in_features)
-
         input = torch.mean(input, dim=0, keepdim=False)
 
         output = self.dense(input)

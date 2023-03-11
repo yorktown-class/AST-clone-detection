@@ -68,13 +68,23 @@ class AstAttention(torch.nn.Module):
         self.norm = torch.nn.LayerNorm(hidden_size)
 
     def forward(self, input: torch.Tensor, mask: torch.Tensor):
-        N, B, _ = input.shape
+        reshape = False
+        if input.dim() == 2:
+            reshape = True
+            N, F = input.shape
+            input = input.reshape(N, 1, F)
+            mask = mask.reshape(1, *mask.shape)
 
-        assert(input.shape == (N, B, self.input_size))
+        N, B, F = input.shape
+        assert(F == self.input_size)
+        assert(mask.shape == (B, N, N))
 
         hidden = self.dense(input)
         for layer in self.layers:
             hidden = layer(hidden, mask)
 
         output = self.norm(hidden)
+        
+        if reshape:
+            output = output.reshape(N, -1)
         return output
