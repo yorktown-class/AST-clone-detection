@@ -31,7 +31,7 @@ class BiDataset(Dataset):
 		print(len(self.word2vec_cache))
 
 		n = len(self.raw_data_list)
-		self.indexs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+		self.indexs = [(i, j) for i in range(500) for j in range(n)]
 
 	def __len__(self):
 		return len(self.indexs)
@@ -48,12 +48,14 @@ class BiDataset(Dataset):
 		)
 
 def collate_fn(batch: List[Tuple[str, str, torch.Tensor, torch.Tensor]]):
-	from torch.utils.data import default_collate
+	# from torch.utils.data import default_collate
 
-	collate_index = default_collate([(idx1, idx2) for idx1, idx2, _, _ in batch])
+	# collate_index = default_collate([(idx1, idx2) for idx1, idx2, _, _ in batch])
+	idx1_list = [idx1 for idx1, idx2, _, _ in batch]
+	idx2_list = [idx2 for idx1, idx2, _, _ in batch]
 	collate_tree = tree_tools.collate_tree_tensor([(nodes, mask) for _, _, nodes, mask in batch])
 
-	return *collate_index, *collate_tree
+	return idx1_list, idx2_list, *collate_tree
 
 
 class ResultDict:
@@ -137,7 +139,7 @@ if __name__ == "__main__":
 			result_list = [result[i].item() for i in range(result.shape[0])]
 		for idx, jdx, result in zip(idx_list, jdx_list, result_list):
 			result_dict.insert(idx, jdx, result)
-			result_dict.insert(jdx, idx, result)
+			# result_dict.insert(jdx, idx, result)
 
 		if case_idx % 10000 == 0:
 			lines = [str(case_idx)] + result_dict.jsonl()
