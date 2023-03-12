@@ -82,9 +82,7 @@ class AstAttention(torch.nn.Module):
         assert(mask.shape == (B, N, N))
 
         hidden = self.dense(input)
-        print(hidden.shape)
         hidden = self.pos_embedding(hidden)
-        print(hidden.shape)
         for layer in self.layers:
             hidden = layer(hidden, mask)
 
