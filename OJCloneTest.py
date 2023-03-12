@@ -116,7 +116,7 @@ if __name__ == "__main__":
 	dataloader = DataLoader(BiDataset("dataset/OJClone/test.jsonl"),
 			 batch_size=2,
 			 collate_fn=collate_fn,
-			 num_workers=2)
+			 num_workers=0)
 
 	result_dict = ResultDict()
 

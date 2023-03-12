@@ -50,10 +50,12 @@ def tree_VE_to_tensor(tree_VE: TreeVE, word2vec_cache: Dict[str, torch.Tensor] =
 
     n, _ = nodes.shape
     _, m = edges.shape
-    mask = ~torch.eye(n, dtype=torch.bool)
-    for _ in range(int(math.log(m, 2))):
-        mask[edges[1, :]] &= mask[edges[0, :]]
-    assert(torch.any(mask[0, :]) == False)
+    mask = torch.eye(n, dtype=torch.bool)
+
+    for i in range(m):
+        mask[edges[1, i]] = torch.logical_or(mask[edges[1, i]], mask[edges[0, i]])
+
+    mask = ~mask
     return nodes, mask
 
 

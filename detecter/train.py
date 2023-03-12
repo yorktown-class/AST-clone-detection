@@ -27,7 +27,7 @@ class Trainer(torch.nn.Module):
         input = input.to(device)
         mask = mask.to(device)
 
-        hidden = self.model(input, mask)
+        hidden = self.model(input, mask)[0]
         output = self.classifier(hidden)
 
         loss: torch.Tensor = self.loss_fn(output, labels)

@@ -12,6 +12,7 @@ import numpy
 from .. import config
 from .. import parser
 from ..word2vec import word2vec, create_word_dict
+from .. import tree_tools
 
 
 def convert(code: Dict) -> Tuple[List[str], Tuple[List[int], List[int]]]:
@@ -41,96 +42,72 @@ def convert_code(code_list: List[Dict]):
 class DataSet(data.Dataset):
     def __init__(self, data_path, item_count=None, max_node_count=None) -> None:
         super().__init__()
-        self.data_path = data_path
-        self.data_list = list() # tuple(label, V, E)
+        self.raw_data_list = list()
+        self.tree_VE_list = list()
         self.word_dict = dict() # str -> vector
+        self.length = 0
 
-        save_path = data_path + "({})".format(item_count) + ".pt"
+        with open(data_path, "r") as f:
+            lines = f.readlines()
+        self.raw_data_list = [json.loads(line) for line in lines]
+        self.length = len(self.raw_data_list)
+
+        save_path = data_path + ".pt"
 
         try:
-            with open(save_path, "rb") as f:
-                save = torch.load(f)
-            self.data_list = save["data_list"]
+            save = torch.load(save_path)
+            self.tree_VE_list = save["tree_VE_list"]
             self.word_dict = save["word_dict"]
-        
+
         except IOError:
-            with open(data_path, "r") as f:
-                lines = f.readlines()
-            raw_data_list = [json.loads(line) for line in lines]
-            if item_count:
-                raw_data_list = raw_data_list[:min(item_count, len(raw_data_list))]
-            
-            label_list = [raw["label"] for raw in raw_data_list]
-            code_tree_list = convert_code(raw_data_list)
-            self.data_list = [(label, V, E) for label, (V, E) in zip(label_list, code_tree_list)]
-            
-            nodes_list = [v for l, v, e in self.data_list]
+            self.tree_VE_list = list(map(parser.parse, (raw["code"] for raw in self.raw_data_list)))
+            nodes_list = [tree_V for tree_V, tree_E in self.tree_VE_list]
             self.word_dict = create_word_dict(list(itertools.chain(*nodes_list)))
 
-            with open(save_path, "wb") as f:
-                torch.save({
-                    "data_list": self.data_list, 
-                    "word_dict": self.word_dict,
-                }, f)
+            torch.save({
+                "tree_VE_list": self.tree_VE_list, 
+                "word_dict": self.word_dict,
+            }, save_path)
         
         if max_node_count:
-            self.data_list = [(l, v, e) for l, v, e in self.data_list if len(v) <= max_node_count]
+            index = (idx for idx, (tree_V, tree_E) in self.tree_VE_list if len(tree_V) <= max_node_count)
+            self.data_list = [self.data_list[i] for i in index]
+            self.raw_data_list = [self.raw_data_list[i] for i in index]
+            self.length = len(self.raw_data_list)
+        if item_count:
+            self.length = min(self.length, item_count)
 
     def __getitem__(self, index) -> Tuple[int, torch.Tensor, torch.Tensor]:
-        label, V, E = self.data_list[index]
+        label = self.raw_data_list[index]["label"]
+        tree_VE = self.tree_VE_list[index]
 
-        wordvec_list = [self.word_dict[v] for v in V]
-        wordvec_list = numpy.array(wordvec_list)
-        tensorV = torch.tensor(wordvec_list, dtype=torch.float)
-
-        tensorE = torch.tensor(E, dtype=torch.long)
-        n, _ = tensorV.shape
-        _, m = tensorE.shape
-        mask = ~torch.eye(n, dtype=torch.bool)
-        for _ in range(int(math.log(m, 2))):
-            mask[tensorE[1, :]] &= mask[tensorE[0, :]]
-        
-        return int(label) - 1, tensorV, mask
+        nodes, mask = tree_tools.tree_VE_to_tensor(tree_VE, word2vec_cache=self.word_dict)
+        return int(label) - 1, nodes, mask
 
     def __len__(self) -> int:
-        return len(self.data_list)
+        return self.length
 
-class BiDataSet(data.Dataset):
-    def __init__(self, dataset: DataSet) -> None:
-        super().__init__()
-        self.dataset = dataset
-        n = len(dataset)
-        self.index_map = list(range(n))
-        self.separator = n
-
-        self.randlist = torch.randperm(n).tolist()
+class BiDataSet(DataSet):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.separator = self.length
+        self.randlist = torch.randperm(self.length).tolist()
     
     def __getitem__(self, index):
-        def merge(batch1, batch2):
-            labeli, nodesi, maski = batch1
-            labelj, nodesj, maskj = batch2
-            leni = nodesi.shape[0]
-            lenj = nodesj.shape[0]
-            nodes = torch.cat([word2vec("<CODE_COMPARE>").reshape(1, -1), nodesi, nodesj], dim=0)
-            mask = torch.ones((1 + leni + lenj, 1 + leni + lenj), dtype=torch.bool)
-            mask[0, :] = False
-            mask[1: leni+1, 1: leni+1] = maski
-            mask[leni+1: leni+lenj+1, leni+1: leni+lenj+1] = maskj
-            return labeli == labelj, nodes, mask
-
         if index < self.separator:
             i, j = index, index
         else:
             index -= self.separator
             i, j = index, self.randlist[index]
-
-        return merge(self.dataset[i], self.dataset[j])
+        tree_VE = tree_tools.merge_tree_VE(self.tree_VE_list[i], self.tree_VE_list[j], "<CODE_COMPATE>")
+        nodes, mask = tree_tools.tree_VE_to_tensor(tree_VE, self.word_dict)
+        return self.raw_data_list[i]["label"] == self.raw_data_list[j]["label"], nodes, mask
 
     def __len__(self) -> int:
         return self.separator * 2
 
 
-def collate_fn(batch: List[Union[str, torch.Tensor, torch.Tensor]]):
+def collate_fn(batch: List[Union[int, torch.Tensor, torch.Tensor]]):
     label_list = [label for label, nodes, mask in batch]
     nodes_list = [nodes for label, nodes, mask in batch]
     mask_list = [mask for label, nodes, mask in batch]
