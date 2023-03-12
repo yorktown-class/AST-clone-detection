@@ -92,7 +92,17 @@ class BiDataSet(DataSet):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.separator = self.length
-        self.randlist = torch.randperm(self.length).tolist()
+        
+        self.randlist = []
+        perm = set(torch.randperm(self.length).tolist())
+        
+        for i in range(self.length):
+            label = self.raw_data_list[i]["label"]
+            for k in perm:
+                if self.raw_data_list[k]["label"] != label:
+                    break
+            self.randlist.append(k)
+            perm.remove(k)
     
     def __getitem__(self, index):
         if index < self.separator:
