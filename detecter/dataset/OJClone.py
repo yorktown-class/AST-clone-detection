@@ -62,7 +62,7 @@ class DataSet(data.Dataset):
         except IOError:
             self.tree_VE_list = list(map(parser.parse, (raw["code"] for raw in self.raw_data_list)))
             nodes_list = [tree_V for tree_V, tree_E in self.tree_VE_list]
-            self.word_dict = create_word_dict(list(itertools.chain(*nodes_list)))
+            self.word_dict = create_word_dict(list(itertools.chain(*nodes_list)) + ["<CODE_COMPARE>"])
 
             torch.save({
                 "tree_VE_list": self.tree_VE_list, 
@@ -70,10 +70,11 @@ class DataSet(data.Dataset):
             }, save_path)
         
         if max_node_count:
-            index = (idx for idx, (tree_V, tree_E) in self.tree_VE_list if len(tree_V) <= max_node_count)
-            self.data_list = [self.data_list[i] for i in index]
-            self.raw_data_list = [self.raw_data_list[i] for i in index]
-            self.length = len(self.raw_data_list)
+            self.tree_VE_list = [tree_tools.tree_VE_prune(tree_VE, max_node_count) for tree_VE in self.tree_VE_list]
+            # index = [idx for idx, (tree_V, tree_E) in enumerate(self.tree_VE_list) if len(tree_V) <= max_node_count]
+            # self.tree_VE_list = [self.tree_VE_list[i] for i in index]
+            # self.raw_data_list = [self.raw_data_list[i] for i in index]
+            # self.length = len(self.raw_data_list)
         if item_count:
             self.length = min(self.length, item_count)
 

@@ -5,19 +5,12 @@ from torch.utils import data
 import logging
 import multiprocessing
 from tqdm import tqdm
+import os
 
 from detecter.dataset import OJClone
 from detecter.model import AstAttention, Classifier
 from detecter.train import Trainer, check_point, model_pt
-
-logger = logging.getLogger("train")
-logger.setLevel(logging.INFO)
-
-stderr = logging.StreamHandler()
-stderr.setLevel(logging.INFO)
-logger.addHandler(stderr)
-
-# multiprocessing.set_start_method('spawn')
+from detecter.word2vec import word2vec
 
 
 TRAINER_CKPT_PATH = "log/trainer.ckpt"
@@ -25,11 +18,23 @@ BEST_MODEL_PATH = "log/model.pt"
 
 
 if __name__ == "__main__":
-	batch_size = 1
-	ds = OJClone.BiDataSet("dataset/OJClone/train.jsonl")
-	loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, shuffle=True, num_workers=4)
-	ds = OJClone.BiDataSet("dataset/OJClone/valid.jsonl")
-	v_loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, num_workers=4)
+	os.environ["TOKENIZERS_PARALLELISM"] = "true"
+	logger = logging.getLogger("train")
+	logger.setLevel(logging.INFO)
+
+	stderr = logging.StreamHandler()
+	stderr.setLevel(logging.INFO)
+	logger.addHandler(stderr)
+
+	multiprocessing.set_start_method('spawn')
+
+	word2vec("1")
+
+	batch_size = 8
+	ds = OJClone.BiDataSet("dataset/OJClone/train.jsonl", max_node_count=1024)
+	loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, shuffle=True, num_workers=2)
+	ds = OJClone.BiDataSet("dataset/OJClone/valid.jsonl", max_node_count=1024)
+	v_loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, num_workers=2)
 
 	
 	model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
