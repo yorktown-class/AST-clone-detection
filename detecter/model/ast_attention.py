@@ -1,6 +1,7 @@
 import torch
 import logging
 
+from .position_embedding import PositionalEmbedding
 from .. import logger
 
 class AttentionLayer(torch.nn.Module):
@@ -53,7 +54,7 @@ class EncodeLayer(torch.nn.Module):
 
 class AstAttention(torch.nn.Module):
     
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_heads: int = 1, dropout: float = 0.5) -> None:
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_heads: int = 1, max_length = 2048, dropout: float = 0.5) -> None:
         super().__init__()
 
         self.input_size = input_size
@@ -61,6 +62,7 @@ class AstAttention(torch.nn.Module):
         self.num_layers = num_layers
 
         self.dense = torch.nn.Linear(input_size, hidden_size)
+        self.pos_embedding = PositionalEmbedding(hidden_size, max_length, dropout)
         self.layers = torch.nn.ModuleList([
             EncodeLayer(hidden_size, num_heads, dropout)
             for _ in range(num_layers)
@@ -80,6 +82,9 @@ class AstAttention(torch.nn.Module):
         assert(mask.shape == (B, N, N))
 
         hidden = self.dense(input)
+        print(hidden.shape)
+        hidden = self.pos_embedding(hidden)
+        print(hidden.shape)
         for layer in self.layers:
             hidden = layer(hidden, mask)
 
