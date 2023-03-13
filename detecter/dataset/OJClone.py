@@ -118,6 +118,21 @@ class BiDataSet(DataSet):
         return self.separator * 2
 
 
+class UnbalancedBiDataSet(DataSet):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.randlist = torch.randperm(self.length).tolist()
+    
+    def __getitem__(self, index):
+        i, j = index, self.randlist[index]
+        tree_VE = tree_tools.merge_tree_VE(self.tree_VE_list[i], self.tree_VE_list[j], "<CODE_COMPATE>")
+        nodes, mask = tree_tools.tree_VE_to_tensor(tree_VE, self.word_dict)
+        return self.raw_data_list[i]["label"] == self.raw_data_list[j]["label"], nodes, mask
+
+    def __len__(self) -> int:
+        return self.length
+
+
 def collate_fn(batch: List[Union[int, torch.Tensor, torch.Tensor]]):
     label_list = [label for label, nodes, mask in batch]
     nodes_list = [nodes for label, nodes, mask in batch]

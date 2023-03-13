@@ -10,28 +10,16 @@ from detecter.model import AstAttention, Classifier
 from detecter import tree_tools
 from detecter import parser
 from detecter import word2vec
+from detecter.dataset import OJClone
 
 
 def parse_code_to_VE(code):
 	return tree_tools.tree_VE_prune(parser.parse(code, "c"), 512) 
 
-class BiDataset(Dataset):
-	def __init__(self, path: str) -> None:
-		super().__init__()
-		with open(path, "r") as f:
-			lines = f.readlines()
-		self.raw_data_list = [json.loads(line) for line in lines]
-
-		code_list = [item["code"] for item in self.raw_data_list]
-		self.tree_VE_list = list(map(parse_code_to_VE, code_list))
-
-		nodes_list = [V for (V, E) in self.tree_VE_list]
-		all_nodes = list(itertools.chain(*nodes_list))
-		self.word2vec_cache = word2vec.create_word_dict(all_nodes)
-		print(len(self.word2vec_cache))
-
-		n = len(self.raw_data_list)
-		self.indexs = [(i, j) for i in range(1) for j in range(n)]
+class BiDataset(OJClone.DataSet):
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		self.indexs = [(i, j) for i in range(1) for j in range(self.length)]
 
 	def __len__(self):
 		return len(self.indexs)
@@ -44,7 +32,7 @@ class BiDataset(Dataset):
 		return (
 			self.raw_data_list[i]["index"],
 			self.raw_data_list[j]["index"],
-			*tree_tools.tree_VE_to_tensor(tree_VE, word2vec_cache=self.word2vec_cache)
+			*tree_tools.tree_VE_to_tensor(tree_VE, word2vec_cache=self.word_dict)
 		)
 
 def collate_fn(batch: List[Tuple[str, str, torch.Tensor, torch.Tensor]]):
@@ -113,10 +101,10 @@ if __name__ == "__main__":
 	model.load_state_dict(save["model_state_dict"])
 	classifier.load_state_dict(save["classifier_state_dict"])
 
-	dataloader = DataLoader(BiDataset("dataset/OJClone/test.jsonl"),
-			 batch_size=2,
+	dataloader = DataLoader(BiDataset("dataset/OJClone/test.jsonl", max_node_count=512),
+			 batch_size=32,
 			 collate_fn=collate_fn,
-			 num_workers=0)
+			 num_workers=2)
 
 	result_dict = ResultDict()
 
@@ -144,8 +132,8 @@ if __name__ == "__main__":
 			# print(torch.mean(hidden, dim=0))
 			# hidden = torch.mean(hidden, dim=0)
 			output = classifier(hidden[0])
-
-			result = output[:, 1] - output[:, 0]
+			output = torch.softmax(output, dim=-1)
+			result = output[:, 1]
 			result_list = [result[i].item() for i in range(result.shape[0])]
 			
 			for idx, jdx, result in zip(idx_list, jdx_list, result_list):

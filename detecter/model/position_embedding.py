@@ -36,4 +36,4 @@ class PositionalEmbedding(torch.nn.Module):
 
         if x.dim() == 3:
             pe = pe.unsqueeze(1)
-        return x + self.drop(pe)
+        return self.drop(x + pe)
