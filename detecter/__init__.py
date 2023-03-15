@@ -12,4 +12,3 @@ stderr.setLevel(logging.INFO)
 
 logger.addHandler(fh)
 logger.addHandler(stderr)
-

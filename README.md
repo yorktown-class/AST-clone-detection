@@ -31,14 +31,14 @@ python preprocess.py
 cd ../..
 ```
 
-会得到三个文件`dataset/OJClone/train.jsonl`, `dataset/OJClone/test.jsonl`, `dataset/OJClone/valid.jsonl` 
+会得到三个文件`dataset/OJClone/train.jsonl`, `dataset/OJClone/test.jsonl`, `dataset/OJClone/valid.jsonl`
 
 
 ### 构建语言解析工具
 
 ```
 mkdir build
-cd build 
+cd build
 git clone https://github.com/tree-sitter/tree-sitter-c
 cd ..
 python build_tree_sitter.py

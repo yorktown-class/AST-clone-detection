@@ -1,7 +1,9 @@
 from typing import *
 
 import tree_sitter
+
 from . import tree_tools
+
 
 class ParseError(Exception):
     pass
@@ -29,16 +31,16 @@ def parse(code: str, lang: str = "c") -> tree_tools.TreeVE:
     parser.set_language(tree_sitter.Language("build/lang.so", lang))
     try:
         tree = parser.parse(bytes(code, encoding="utf-8"))
-    except:
+    except Exception:
         raise ParseError
-        
+
     V = list()
     E = (list(), list())
-    
+
     def walk(node: tree_sitter.Node):
         desc = node.type
         if node.is_named and not node.children:
-            desc = node.text.decode('utf-8')
+            desc = node.text.decode("utf-8")
             if is_punctuation(desc) or is_comment(desc):
                 return None
 
@@ -52,7 +54,7 @@ def parse(code: str, lang: str = "c") -> tree_tools.TreeVE:
             E[1].append(vid)
 
         return vid
-    
+
     walk(tree.root_node)
     return (V, E)
 

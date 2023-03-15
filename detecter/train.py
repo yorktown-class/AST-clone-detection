@@ -1,11 +1,12 @@
+import logging
 from typing import *
 
 import torch
-import logging
 
-from .model import AstAttention, Classifier
-from .evaluator import Evaluator
 from . import logger
+from .evaluator import Evaluator
+from .model import AstAttention, Classifier
+
 
 class Trainer(torch.nn.Module):
     def __init__(self, model: AstAttention, classifier: Classifier):
@@ -21,7 +22,7 @@ class Trainer(torch.nn.Module):
 
     def forward(self, batch: Union[torch.Tensor, torch.Tensor, torch.Tensor]):
         labels, input, mask = batch
-        
+
         device = self.device()
         labels = labels.to(device)
         input = input.to(device)

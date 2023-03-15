@@ -1,7 +1,7 @@
 import torch
-import logging
 
 from . import logger
+
 
 def compute_f1(output: torch.Tensor, target: torch.Tensor):
     t_output = torch.argmax(output, dim=-1).bool()
@@ -21,7 +21,7 @@ def compute_f1(output: torch.Tensor, target: torch.Tensor):
         return f1
     except ZeroDivisionError:
         return torch.zeros(1).float().to(output.device)
-        
+
 
 def compute_acc(output: torch.Tensor, target: torch.Tensor):
     t_output = output.argmax(dim=-1)
@@ -29,7 +29,7 @@ def compute_acc(output: torch.Tensor, target: torch.Tensor):
     false_count = torch.count_nonzero(t_output != target)
     logger.debug("true count  {}".format(true_count))
     logger.debug("false count {}".format(false_count))
-    
+
     return true_count / (true_count + false_count)
 
 
@@ -50,13 +50,11 @@ class Evaluator:
             logger.debug("aggr eval {}".format(self.compute().item()))
 
     def compute(self):
-        assert(self.output_cat is not None)
-        assert(self.target_cat is not None)
+        assert self.output_cat is not None
+        assert self.target_cat is not None
         with torch.no_grad():
             return self.compute_func(self.output_cat, self.target_cat)
 
     def reset(self):
         self.output_cat = None
         self.target_cat = None
-
-

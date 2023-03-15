@@ -1,11 +1,12 @@
+import logging
 from typing import *
 
 import torch
-import logging
 
 from .ast_attention import AstAttention
 
 logger = logging.getLogger("similarity")
+
 
 class Similarity(torch.nn.Module):
     def __init__(self, in_features) -> None:
@@ -21,7 +22,7 @@ class Similarity(torch.nn.Module):
         # print(r_tree.shape)
         L1, B, F = l_tree.shape
         L2, _, _ = r_tree.shape
-        assert(r_tree.shape == (L2, B, F))
+        assert r_tree.shape == (L2, B, F)
 
         l_feature = torch.sum(l_tree, dim=0, keepdim=False)
         r_feature = torch.sum(r_tree, dim=0, keepdim=False)
@@ -33,12 +34,13 @@ class Similarity(torch.nn.Module):
 
         return result
 
+
 # class Similarity(torch.nn.Module):
 #     def __init__(self, input_size: int, hidden_size: int, num_layers: int, num_heads: int) -> None:
 #         super().__init__()
 #         self.encoder = AstAttention(input_size, hidden_size, num_heads, num_heads)
 #         self.query = torch.nn.Parameter(torch.Tensor(input_size))
-    
+
 #     def forward(self, input1: torch.Tensor, mask1: torch.Tensor, input2: torch.Tensor, mask2: torch.Tensor):
 #         print(input1.shape)
 #         print(mask1.shape)
