@@ -29,8 +29,8 @@ if __name__ == "__main__":
 
     word2vec("1")
 
-    batch_size = 8
-    ds = OJClone.BiDataSet("dataset/OJClone/train.jsonl", max_node_count=1024)
+    batch_size = 1
+    ds = OJClone.BiDataSet("dataset/OJClone/train.jsonl", max_node_count=512)
     loader = data.DataLoader(
         ds,
         batch_size=batch_size,
@@ -38,7 +38,7 @@ if __name__ == "__main__":
         shuffle=True,
         num_workers=2,
     )
-    ds = OJClone.BiDataSet("dataset/OJClone/valid.jsonl", max_node_count=1024)
+    ds = OJClone.BiDataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
     v_loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, num_workers=2)
 
     model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()

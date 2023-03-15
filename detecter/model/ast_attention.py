@@ -67,7 +67,7 @@ class AstAttention(torch.nn.Module):
         self.num_layers = num_layers
 
         self.dense = torch.nn.Linear(input_size, hidden_size)
-        self.pos_embedding = PositionalEmbedding(hidden_size, max_length, dropout)
+        self.pos_embedding = PositionalEmbedding(hidden_size, dropout)
         self.layers = torch.nn.ModuleList([EncodeLayer(hidden_size, num_heads, dropout) for _ in range(num_layers)])
         self.norm = torch.nn.LayerNorm(hidden_size)
 

@@ -9,10 +9,9 @@ PE(pos, 2i+1) = cos(pos / 10000 ^ {2i / d})
 
 
 class PositionalEmbedding(torch.nn.Module):
-    def __init__(self, channels, max_length, dropout=0.5):
+    def __init__(self, channels, dropout=0.5):
         super().__init__()
         self.channels = channels
-        self.max_length = max_length
 
         self.drop = torch.nn.Dropout(p=dropout)
 
@@ -25,7 +24,6 @@ class PositionalEmbedding(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         N = x.shape[0]
         F = x.shape[-1]
-        assert N < self.max_length
         assert F == self.channels
 
         with torch.no_grad():
