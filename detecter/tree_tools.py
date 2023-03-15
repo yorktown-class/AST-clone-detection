@@ -11,6 +11,9 @@ TreeTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
 def tree_VE_prune(tree_VE: TreeVE, max_node_count=512) -> TreeVE:
+    """
+    递归调用,随机删去叶子,直到树的节点数小于512
+    """
     tree_V, Tree_E = tree_VE
     n = len(tree_V)
     if n <= max_node_count:
@@ -46,6 +49,12 @@ def tree_VE_prune(tree_VE: TreeVE, max_node_count=512) -> TreeVE:
 
 
 def tree_VE_to_tensor(tree_VE: TreeVE, word2vec_cache: Dict[str, torch.Tensor] = None) -> TreeTensor:
+    """
+    将由(V, E)表示的树转换为由(nodes, mask)两个tensor表示的树。
+
+    其中nodes表示点矩阵, mask为可达矩阵取反
+    """
+
     def word2vec(word: str):
         if word2vec_cache and word in word2vec_cache:
             return word2vec_cache[word]
@@ -70,6 +79,9 @@ def tree_VE_to_tensor(tree_VE: TreeVE, word2vec_cache: Dict[str, torch.Tensor] =
 
 
 def merge_tree_VE(tree_VE1: TreeVE, tree_VE2: TreeVE, merge_node: str) -> TreeVE:
+    """
+    通过merge_node合并两颗树
+    """
     tree_V1, tree_E1 = tree_VE1
     tree_V2, tree_E2 = tree_VE2
 
