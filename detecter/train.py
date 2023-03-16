@@ -79,6 +79,7 @@ class Trainer(torch.nn.Module):
     def device(self) -> bool:
         return next(self.parameters()).device
 
+    @autocast(enabled=True)
     def forward(self, batch: Union[torch.Tensor, torch.Tensor, torch.Tensor]):
         label, input, mask = batch
 
@@ -116,10 +117,11 @@ class Trainer(torch.nn.Module):
         return loss
 
 
-def check_point(trainer: Trainer, optimizer: torch.optim.Optimizer, epoch) -> Dict:
+def check_point(trainer: Trainer, optimizer: torch.optim.Optimizer, scaler: torch.cuda.amp.GradScaler, epoch) -> Dict:
     return {
         "trainer_state_dict": trainer.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
+        "scaler_state_dict": scaler.state_dict(),
         "epoch": epoch,
     }
 

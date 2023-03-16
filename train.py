@@ -4,6 +4,7 @@ import os
 from typing import *
 
 import torch
+from torch.cuda.amp import GradScaler
 from torch.utils import data
 from tqdm import tqdm
 
@@ -48,6 +49,8 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=3e-4, weight_decay=0.1)
 
+    scaler = GradScaler()
+
     try:
         with open(BEST_MODEL_PATH, "rb") as f:
             save = torch.load(f)
@@ -61,6 +64,7 @@ if __name__ == "__main__":
         save = torch.load(TRAINER_CKPT_PATH)
         trainer.load_state_dict(save["trainer_state_dict"], strict=True)
         optimizer.load_state_dict(save["optimizer_state_dict"])
+        scaler.load_state_dict(save["scaler_state_dict"])
         epoch = save["epoch"]
     except IOError:
         epoch = 1
@@ -73,8 +77,9 @@ if __name__ == "__main__":
         for batch in tqdm(loader):
             optimizer.zero_grad()
             loss = trainer(batch)
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
         trainer.evaluate()
 
         trainer.eval()
@@ -83,7 +88,7 @@ if __name__ == "__main__":
                 trainer(batch)
         loss = trainer.evaluate()
 
-        torch.save(train.check_point(trainer, optimizer, epoch), TRAINER_CKPT_PATH)
+        torch.save(train.check_point(trainer, optimizer, scaler, epoch), TRAINER_CKPT_PATH)
         if loss < min_loss:
             min_loss = loss
             torch.save(train.model_pt(model, loss), BEST_MODEL_PATH)
