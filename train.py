@@ -7,9 +7,9 @@ import torch
 from torch.utils import data
 from tqdm import tqdm
 
+from detecter import train
 from detecter.dataset import OJClone
 from detecter.model import AstAttention, Classifier
-from detecter.train import Trainer, check_point, model_pt
 from detecter.word2vec import word2vec
 
 TRAINER_CKPT_PATH = "log/trainer.ckpt"
@@ -27,23 +27,25 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
 
-    word2vec("1")
-
-    batch_size = 1
-    ds = OJClone.BiDataSet("dataset/OJClone/train.jsonl", max_node_count=512)
+    batch_size = 4
+    ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
     loader = data.DataLoader(
         ds,
-        batch_size=batch_size,
-        collate_fn=OJClone.collate_fn,
-        shuffle=True,
+        batch_sampler=train.BatchSampler(ds, batch_size=batch_size),
+        collate_fn=train.collate_fn,
         num_workers=2,
     )
-    ds = OJClone.BiDataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
-    v_loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, num_workers=2)
+    ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
+    v_loader = data.DataLoader(
+        ds,
+        batch_sampler=train.BatchSampler(ds, batch_size=batch_size),
+        collate_fn=train.collate_fn,
+        num_workers=2,
+    )
 
     model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
     classifier = Classifier(768, 2).cuda()
-    trainer = Trainer(model=model, classifier=classifier).cuda()
+    trainer = train.Trainer(model=model, classifier=classifier).cuda()
 
     optimizer = torch.optim.AdamW(
         [
@@ -88,9 +90,9 @@ if __name__ == "__main__":
                 trainer(batch)
         loss = trainer.evaluate()
 
-        torch.save(check_point(trainer, optimizer, epoch), TRAINER_CKPT_PATH)
+        torch.save(train.check_point(trainer, optimizer, epoch), TRAINER_CKPT_PATH)
         if loss < min_loss:
             min_loss = loss
-            torch.save(model_pt(model, classifier, loss), BEST_MODEL_PATH)
+            torch.save(train.model_pt(model, classifier, loss), BEST_MODEL_PATH)
 
         epoch += 1
