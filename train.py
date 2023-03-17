@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
 
-    batch_size = 4
+    batch_size = 16
     ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
     loader = data.DataLoader(
         ds,
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         collate_fn=train.collate_fn,
         num_workers=2,
     )
-    ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
+    ds = OJClone.DataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
     v_loader = data.DataLoader(
         ds,
         batch_sampler=train.BatchSampler(ds, batch_size=batch_size),
@@ -44,21 +44,14 @@ if __name__ == "__main__":
     )
 
     model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
-    classifier = Classifier(768, 2).cuda()
-    trainer = train.Trainer(model=model, classifier=classifier).cuda()
+    trainer = train.Trainer(model=model).cuda()
 
-    optimizer = torch.optim.AdamW(
-        [
-            {"params": model.parameters(), "lr": 3e-5, "weight_decay": 0.1},
-            {"params": classifier.parameters(), "lr": 3e-4},
-        ]
-    )
+    optimizer = torch.optim.AdamW(params=model.parameters(), lr=3e-4, weight_decay=0.1)
 
     try:
         with open(BEST_MODEL_PATH, "rb") as f:
             save = torch.load(f)
         model.load_state_dict(save["model_state_dict"], strict=True)
-        classifier.load_state_dict(save["classifier_state_dict"], strict=True)
         min_loss = save["loss"]
     except IOError:
         logger.info("no model")
@@ -93,6 +86,6 @@ if __name__ == "__main__":
         torch.save(train.check_point(trainer, optimizer, epoch), TRAINER_CKPT_PATH)
         if loss < min_loss:
             min_loss = loss
-            torch.save(train.model_pt(model, classifier, loss), BEST_MODEL_PATH)
+            torch.save(train.model_pt(model, loss), BEST_MODEL_PATH)
 
         epoch += 1

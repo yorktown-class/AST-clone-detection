@@ -69,10 +69,9 @@ class Evaluator:
 
 
 class Trainer(torch.nn.Module):
-    def __init__(self, model: AstAttention, classifier: Classifier):
+    def __init__(self, model: AstAttention):
         super().__init__()
         self.model: AstAttention = model
-        self.classifier: Classifier = classifier
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.evaluator = Evaluator()
         self.loss_list = []
@@ -125,9 +124,8 @@ def check_point(trainer: Trainer, optimizer: torch.optim.Optimizer, epoch) -> Di
     }
 
 
-def model_pt(model: torch.nn.Module, classifier: torch.nn.Module, loss) -> Dict:
+def model_pt(model: torch.nn.Module, loss) -> Dict:
     return {
         "model_state_dict": model.state_dict(),
-        "classifier_state_dict": classifier.state_dict(),
         "loss": float(loss),
     }
