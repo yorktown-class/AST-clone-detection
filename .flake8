@@ -7,4 +7,6 @@ ignore =
 	# imported but unused
 	F401,
 	# line too long
-	E501
+	E501,
+	# whitespace before ':'
+	E203
