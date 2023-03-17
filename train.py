@@ -7,9 +7,9 @@ import torch
 from torch.utils import data
 from tqdm import tqdm
 
+from detecter import train
 from detecter.dataset import OJClone
 from detecter.model import AstAttention, Classifier
-from detecter.train import Trainer, check_point, model_pt
 from detecter.word2vec import word2vec
 
 TRAINER_CKPT_PATH = "log/trainer.ckpt"
@@ -27,36 +27,31 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
 
-    word2vec("1")
-
-    batch_size = 1
-    ds = OJClone.BiDataSet("dataset/OJClone/train.jsonl", max_node_count=512)
+    batch_size = 16
+    ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
     loader = data.DataLoader(
         ds,
-        batch_size=batch_size,
-        collate_fn=OJClone.collate_fn,
-        shuffle=True,
+        batch_sampler=train.BatchSampler(ds, batch_size=batch_size),
+        collate_fn=train.collate_fn,
         num_workers=2,
     )
-    ds = OJClone.BiDataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
-    v_loader = data.DataLoader(ds, batch_size=batch_size, collate_fn=OJClone.collate_fn, num_workers=2)
+    ds = OJClone.DataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
+    v_loader = data.DataLoader(
+        ds,
+        batch_sampler=train.BatchSampler(ds, batch_size=batch_size),
+        collate_fn=train.collate_fn,
+        num_workers=2,
+    )
 
     model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
-    classifier = Classifier(768, 2).cuda()
-    trainer = Trainer(model=model, classifier=classifier).cuda()
+    trainer = train.Trainer(model=model).cuda()
 
-    optimizer = torch.optim.AdamW(
-        [
-            {"params": model.parameters(), "lr": 3e-5, "weight_decay": 0.1},
-            {"params": classifier.parameters(), "lr": 3e-4},
-        ]
-    )
+    optimizer = torch.optim.AdamW(params=model.parameters(), lr=3e-4, weight_decay=0.1)
 
     try:
         with open(BEST_MODEL_PATH, "rb") as f:
             save = torch.load(f)
         model.load_state_dict(save["model_state_dict"], strict=True)
-        classifier.load_state_dict(save["classifier_state_dict"], strict=True)
         min_loss = save["loss"]
     except IOError:
         logger.info("no model")
@@ -88,9 +83,9 @@ if __name__ == "__main__":
                 trainer(batch)
         loss = trainer.evaluate()
 
-        torch.save(check_point(trainer, optimizer, epoch), TRAINER_CKPT_PATH)
+        torch.save(train.check_point(trainer, optimizer, epoch), TRAINER_CKPT_PATH)
         if loss < min_loss:
             min_loss = loss
-            torch.save(model_pt(model, classifier, loss), BEST_MODEL_PATH)
+            torch.save(train.model_pt(model, loss), BEST_MODEL_PATH)
 
         epoch += 1
