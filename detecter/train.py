@@ -11,11 +11,12 @@ from .model import AstAttention, Classifier
 
 
 class BatchSampler:
-    def __init__(self, data_source: DataSet, batch_size: int) -> None:
+    def __init__(self, data_source: DataSet, batch_size: int, shuffle: bool) -> None:
         self.data_source = data_source
         assert batch_size % 2 == 0
         assert batch_size >= 4
         self.batch_size = batch_size
+        self.shuffle = shuffle
 
     def __iter__(self):
         label_cluster = dict()
@@ -24,20 +25,26 @@ class BatchSampler:
             label_cluster[label] = label_cluster.get(label, []) + [i]
 
         cluster_list = [cluster for cluster in label_cluster.values() if len(cluster) >= 2]
-        for cluster in cluster_list:
-            random.shuffle(cluster)
 
         n_cluster = self.batch_size // 2
 
         if n_cluster > len(cluster_list):
             raise ValueError("batch size too big")
 
-        while len(cluster_list) >= n_cluster:
+        if self.shuffle:
+            for cluster in cluster_list:
+                random.shuffle(cluster)
             random.shuffle(cluster_list)
+
+        while len(cluster_list) >= n_cluster:
             batch_list = []
             for cluster in cluster_list[:n_cluster]:
                 batch_list.append(list.pop(cluster))
                 batch_list.append(list.pop(cluster))
+            if self.shuffle:
+                random.shuffle(cluster_list)
+            else:
+                cluster_list = cluster_list[1:] + cluster_list[:1]
             cluster_list = list(filter(lambda cluster: len(cluster) >= 2, cluster_list))
             yield batch_list
 

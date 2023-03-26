@@ -35,14 +35,14 @@ class BiDataset(OJClone.DataSet):
 
 
 # def collate_fn(batch: List[Tuple[str, str, torch.Tensor, torch.Tensor]]):
-    # from torch.utils.data import default_collate
+# from torch.utils.data import default_collate
 
-    # collate_index = default_collate([(idx1, idx2) for idx1, idx2, _, _ in batch])
-    # idx1_list = [idx1 for idx1, idx2, _, _ in batch]
-    # idx2_list = [idx2 for idx1, idx2, _, _ in batch]
-    # collate_tree = tree_tools.collate_tree_tensor([(nodes, mask) for _, _, nodes, mask in batch])
+# collate_index = default_collate([(idx1, idx2) for idx1, idx2, _, _ in batch])
+# idx1_list = [idx1 for idx1, idx2, _, _ in batch]
+# idx2_list = [idx2 for idx1, idx2, _, _ in batch]
+# collate_tree = tree_tools.collate_tree_tensor([(nodes, mask) for _, _, nodes, mask in batch])
 
-    # return idx1_list, idx2_list, *collate_tree
+# return idx1_list, idx2_list, *collate_tree
 
 
 def collate_fn(batch: List[Tuple[str, tree_tools.TreeV, tree_tools.TreeE]]):
@@ -99,7 +99,7 @@ class ResultDict:
 
 
 if __name__ == "__main__":
-    model = AstAttention(384, 768, 3, 8).eval().cuda()
+    model = AstAttention(384, 768, 6, 8).eval().cuda()
     # classifier = Classifier(768, 2).eval().cuda()
 
     save = torch.load("log/model.pt")

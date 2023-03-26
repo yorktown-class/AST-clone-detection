@@ -18,7 +18,7 @@ BEST_MODEL_PATH = "log/model.pt"
 
 
 if __name__ == "__main__":
-    os.environ["TOKENIZERS_PARALLELISM"] = "true"
+    # os.environ["TOKENIZERS_PARALLELISM"] = "true"
     logger = logging.getLogger("train")
     logger.setLevel(logging.INFO)
 
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
     loader = data.DataLoader(
         ds,
-        batch_sampler=train.BatchSampler(ds, batch_size=batch_size),
+        batch_sampler=train.BatchSampler(ds, batch_size=batch_size, shuffle=True),
         collate_fn=train.collate_fn,
         num_workers=4,
         pin_memory=True,
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     ds = OJClone.DataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
     v_loader = data.DataLoader(
         ds,
-        batch_sampler=train.BatchSampler(ds, batch_size=min(32, batch_size)),
+        batch_sampler=train.BatchSampler(ds, batch_size=min(32, batch_size), shuffle=False),
         collate_fn=train.collate_fn,
         num_workers=4,
         pin_memory=True,
@@ -83,13 +83,13 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             loss = trainer(batch)
             scaler.scale(loss).backward()
-            scaler.step(optimizer) 
+            scaler.step(optimizer)
             scaler.update()
         trainer.evaluate()
 
         torch.save(train.check_point(trainer, optimizer, scaler, epoch), TRAINER_CKPT_PATH)
 
-        if epoch % 5 == 0:
+        if epoch % 1 == 0:
             with torch.no_grad():
                 trainer.eval()
                 for batch in tqdm(v_loader):
@@ -99,4 +99,3 @@ if __name__ == "__main__":
             if loss < min_loss:
                 min_loss = loss
                 torch.save(train.model_pt(model, loss), BEST_MODEL_PATH)
-
