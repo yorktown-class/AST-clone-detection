@@ -89,6 +89,7 @@ class AstAttention(torch.nn.Module):
             hidden = layer(hidden, mask)
 
         output = self.norm(hidden)
+        # output = torch.nn.functional.normalize(output, dim=-1)
 
         if reshape:
             output = output.reshape(N, -1)

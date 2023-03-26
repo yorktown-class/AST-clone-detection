@@ -34,15 +34,21 @@ class BiDataset(OJClone.DataSet):
         )
 
 
-def collate_fn(batch: List[Tuple[str, str, torch.Tensor, torch.Tensor]]):
-    # from torch.utils.data import default_collate
+# def collate_fn(batch: List[Tuple[str, str, torch.Tensor, torch.Tensor]]):
+# from torch.utils.data import default_collate
 
-    # collate_index = default_collate([(idx1, idx2) for idx1, idx2, _, _ in batch])
-    idx1_list = [idx1 for idx1, idx2, _, _ in batch]
-    idx2_list = [idx2 for idx1, idx2, _, _ in batch]
-    collate_tree = tree_tools.collate_tree_tensor([(nodes, mask) for _, _, nodes, mask in batch])
+# collate_index = default_collate([(idx1, idx2) for idx1, idx2, _, _ in batch])
+# idx1_list = [idx1 for idx1, idx2, _, _ in batch]
+# idx2_list = [idx2 for idx1, idx2, _, _ in batch]
+# collate_tree = tree_tools.collate_tree_tensor([(nodes, mask) for _, _, nodes, mask in batch])
 
-    return idx1_list, idx2_list, *collate_tree
+# return idx1_list, idx2_list, *collate_tree
+
+
+def collate_fn(batch: List[Tuple[str, tree_tools.TreeV, tree_tools.TreeE]]):
+    index = [idx for idx, _, _ in batch]
+    tree_VE = [(tree_V, tree_E) for _, tree_V, tree_E in batch]
+    return torch.tensor(index, dtype=torch.long), *tree_tools.collate_tree_tensor(tree_VE)
 
 
 class ResultDict:
@@ -94,59 +100,44 @@ class ResultDict:
 
 if __name__ == "__main__":
     model = AstAttention(384, 768, 6, 8).eval().cuda()
-    classifier = Classifier(768, 2).eval().cuda()
+    # classifier = Classifier(768, 2).eval().cuda()
 
     save = torch.load("log/model.pt")
     model.load_state_dict(save["model_state_dict"])
-    classifier.load_state_dict(save["classifier_state_dict"])
+    # classifier.load_state_dict(save["classifier_state_dict"])
 
-    dataloader = DataLoader(
-        BiDataset("dataset/OJClone/test.jsonl", max_node_count=512),
-        batch_size=32,
-        collate_fn=collate_fn,
-        num_workers=2,
-    )
+    dataset = OJClone.DataSet("dataset/OJClone/test.jsonl", max_node_count=1024)
+    dataloader = DataLoader(dataset, batch_size=16, collate_fn=collate_fn, pin_memory=True, num_workers=4)
 
     result_dict = ResultDict()
 
-    for p in model.parameters():
-        p.requires_grad = False
-    for p in classifier.parameters():
-        p.requires_grad = False
-
     try:
-        with open("OJCloneTest.pt", "r") as f:
+        with open("log/OJCloneTest.pt", "r") as f:
             prev_case_idx = int(f.readline())
             jsonl = f.readlines()
         result_dict.from_jsonl(jsonl)
     except IOError:
         prev_case_idx = -1
 
+    ids = 0
     with torch.no_grad():
-        for case_idx, (idx_list, jdx_list, nodes, mask) in enumerate(tqdm(dataloader)):
-            if case_idx <= prev_case_idx:
-                continue
+        tlabel, tree_V, tree_E = dataset[0]
+        tfeature = model(tree_V.unsqueeze(1).cuda(), tree_E.unsqueeze(0).cuda())[0, 0, :]
 
-            hidden = model(nodes.cuda(), mask.cuda())
-            # print(hidden[0])
-            # print(torch.mean(hidden, dim=0))
-            # hidden = torch.mean(hidden, dim=0)
-            output = classifier(hidden[0])
-            output = torch.softmax(output, dim=-1)
-            result = output[:, 1]
-            result_list = [result[i].item() for i in range(result.shape[0])]
+        for label, tree_V, tree_E in tqdm(dataloader):
+            hidden = model(tree_V.cuda(), tree_E.cuda())[0]
 
-            for idx, jdx, result in zip(idx_list, jdx_list, result_list):
-                result_dict.insert(idx, jdx, result)
-                # result_dict.insert(jdx, idx, result)
+            score = torch.sum(tfeature[None, :] * hidden, dim=1)
 
-            if case_idx % 100 == 0:
-                lines = [str(case_idx)] + result_dict.jsonl()
-                lines = [line + "\n" for line in lines]
-                with open("OJCloneTest.pt", "w") as f:
-                    f.writelines(lines)
+            for s in score:
+                result_dict.insert(0, ids, s.item())
+                ids += 1
 
-    with open("OJCloneResult.jsonl", "w") as f:
+    with open("log/OJCloneResult.jsonl", "w") as f:
         lines = result_dict.jsonl()
         lines = [line + "\n" for line in lines]
         f.writelines(lines)
+
+    arr = result_dict.result_dict[0]
+    cnt = filter(lambda x: x["index"] < 500, arr)
+    print(len(list(cnt)))
