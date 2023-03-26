@@ -11,7 +11,7 @@ class ParseError(Exception):
 
 def is_punctuation(sent: str) -> bool:
     punctuation_list = """
-    '";{}[]\n
+    '";{}[]()\n
     """
     punctuation_list = list(punctuation_list)
 
@@ -37,14 +37,26 @@ def parse(code: str, lang: str = "c") -> tree_tools.TreeVE:
     V = list()
     E = (list(), list())
 
-    def walk(node: tree_sitter.Node):
-        desc = node.type
-        if node.is_named and not node.children:
-            desc = node.text.decode("utf-8")
-            if is_punctuation(desc) or is_comment(desc):
-                return None
+    identifier_dict = dict()
 
-        V.append(desc)
+    def get_identifier_id(idt_name: str):
+        if idt_name not in identifier_dict:
+            identifier_dict[idt_name] = len(identifier_dict)
+        return identifier_dict[idt_name]
+
+    def walk(node: tree_sitter.Node):
+        if node.type == "comment" or is_punctuation(node.type):
+            return None
+        elif node.type == "identifier":
+            desc = node.type + "_" + str(get_identifier_id(node.text.decode("utf-8")))
+            V.append(desc)
+            return len(V) - 1
+        elif node.type[-len("literal") :] == "literal":
+            desc = node.type + ": " + node.text.decode("utf-8")
+            V.append(desc)
+            return len(V) - 1
+
+        V.append(node.type)
         vid = len(V) - 1
         for child in node.children:
             child_vid = walk(child)
