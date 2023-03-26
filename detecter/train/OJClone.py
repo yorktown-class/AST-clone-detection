@@ -5,9 +5,9 @@ from typing import *
 import torch
 from torch.cuda.amp import GradScaler, autocast
 
-from . import logger, tree_tools
-from .dataset.OJClone import DataSet
-from .model import AstAttention, Classifier
+from .. import logger, tree_tools
+from ..dataset.OJClone import DataSet
+from ..model import AstAttention, Classifier
 
 
 class BatchSampler:

@@ -1,6 +1,4 @@
 import logging
-import multiprocessing
-import os
 from typing import *
 
 import torch
@@ -8,9 +6,15 @@ from torch.cuda.amp import GradScaler
 from torch.utils import data
 from tqdm import tqdm
 
-from detecter import train
 from detecter.dataset import OJClone
 from detecter.model import AstAttention, Classifier
+from detecter.train.OJClone import (
+    BatchSampler,
+    Trainer,
+    check_point,
+    collate_fn,
+    model_pt,
+)
 from detecter.word2vec import word2vec
 
 TRAINER_CKPT_PATH = "log/trainer.ckpt"
@@ -32,22 +36,22 @@ if __name__ == "__main__":
     ds = OJClone.DataSet("dataset/OJClone/train.jsonl", max_node_count=512)
     loader = data.DataLoader(
         ds,
-        batch_sampler=train.BatchSampler(ds, batch_size=batch_size, shuffle=True),
-        collate_fn=train.collate_fn,
+        batch_sampler=BatchSampler(ds, batch_size=batch_size, shuffle=True),
+        collate_fn=collate_fn,
         num_workers=4,
         pin_memory=True,
     )
     ds = OJClone.DataSet("dataset/OJClone/valid.jsonl", max_node_count=512)
     v_loader = data.DataLoader(
         ds,
-        batch_sampler=train.BatchSampler(ds, batch_size=min(32, batch_size), shuffle=False),
-        collate_fn=train.collate_fn,
+        batch_sampler=BatchSampler(ds, batch_size=min(32, batch_size), shuffle=False),
+        collate_fn=collate_fn,
         num_workers=4,
         pin_memory=True,
     )
 
     model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
-    trainer = train.Trainer(model=model).cuda()
+    trainer = Trainer(model=model).cuda()
 
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=3e-5, weight_decay=0.1)
 
@@ -87,7 +91,7 @@ if __name__ == "__main__":
             scaler.update()
         trainer.evaluate()
 
-        torch.save(train.check_point(trainer, optimizer, scaler, epoch), TRAINER_CKPT_PATH)
+        torch.save(check_point(trainer, optimizer, scaler, epoch), TRAINER_CKPT_PATH)
 
         if epoch % 1 == 0:
             with torch.no_grad():
@@ -98,4 +102,4 @@ if __name__ == "__main__":
 
             if loss < min_loss:
                 min_loss = loss
-                torch.save(train.model_pt(model, loss), BEST_MODEL_PATH)
+                torch.save(model_pt(model, loss), BEST_MODEL_PATH)

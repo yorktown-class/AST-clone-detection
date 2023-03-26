@@ -7,7 +7,7 @@ from torch.utils import data
 from tqdm import tqdm
 
 from detecter.dataset import BigCloneBench
-from detecter.model import AstAttention, Similarity
+from detecter.model import AstAttention, Classifier
 from detecter.train.BigCloneBench import Trainer, check_point, model_pt
 
 TRAINER_CKPT_PATH = "log/trainerBCB.ckpt"
@@ -28,9 +28,9 @@ if __name__ == "__main__":
     stderr.setLevel(logging.INFO)
     logger.addHandler(stderr)
 
-    batch_size = 16
+    batch_size = 8
     ds = BigCloneBench.DataSet(
-        "dataset/BigCloneBench/data.jsonl.txt", "dataset/BigCloneBench/test.txt", max_node_count=512
+        "dataset/BigCloneBench/data.jsonl.txt", "dataset/BigCloneBench/test.txt", max_node_count=1024, fixed_prune=False
     )
 
     indices_list = array_split(list(range(len(ds))), 10)
@@ -47,8 +47,9 @@ if __name__ == "__main__":
     ]
 
     ds = BigCloneBench.DataSet(
-        "dataset/BigCloneBench/data.jsonl.txt", "dataset/BigCloneBench/valid.txt", max_node_count=512
+        "dataset/BigCloneBench/data.jsonl.txt", "dataset/BigCloneBench/valid.txt", max_node_count=1024, fixed_prune=True
     )
+    ds = data.Subset(ds, list(range(10000)))
     v_loader = data.DataLoader(
         ds,
         batch_size=batch_size,
@@ -58,8 +59,8 @@ if __name__ == "__main__":
     )
 
     model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
-    similarity = Similarity(768).cuda()
-    trainer = Trainer(model=model, similarity=similarity).cuda()
+    classifier = Classifier(768, 2).cuda()
+    trainer = Trainer(model=model, classifier=classifier).cuda()
 
     optimizer = torch.optim.AdamW(
         [
@@ -69,7 +70,7 @@ if __name__ == "__main__":
                 "weight_decay": 0.1,
             },
             {
-                "params": similarity.parameters(),
+                "params": classifier.parameters(),
                 "lr": 1e-3,
             },
         ]
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     try:
         save = torch.load(BEST_MODEL_PATH)
         model.load_state_dict(save["model_state_dict"], strict=False)
-        similarity.load_state_dict(save["similarity_state_dict"], strict=False)
+        classifier.load_state_dict(save["classifier_state_dict"], strict=False)
         min_loss = save["loss"]
         logger.info("load model")
     except IOError:
@@ -124,8 +125,8 @@ if __name__ == "__main__":
 
         torch.save(check_point(trainer, optimizer, scaler, (epoch, trained_chunks)), TRAINER_CKPT_PATH)
 
-        if epoch % 1 == 0 and trained_chunks == len(loaders):
-            with torch.no_grad():
+        if trained_chunks % 2 == 0:
+            with torch.inference_mode():
                 trainer.eval()
                 for batch in tqdm(v_loader, desc="VALID"):
                     trainer(batch)
@@ -133,4 +134,4 @@ if __name__ == "__main__":
 
             if loss < min_loss:
                 min_loss = loss
-                torch.save(model_pt(model, similarity, loss), BEST_MODEL_PATH)
+                torch.save(model_pt(model, classifier, loss), BEST_MODEL_PATH)
