@@ -9,14 +9,16 @@ from ..model import AstAttention, Classifier
 
 
 class Trainer(torch.nn.Module):
-    def __init__(self, model: AstAttention, classifier: Classifier):
+    def __init__(self, model: AstAttention, classifier: Classifier, evaluate_step_gap: int):
         super().__init__()
         self.model: AstAttention = model
         self.classifier: Classifier = classifier
+        self.evaluate_step_gap = evaluate_step_gap
+
         self.loss_fn = torch.nn.CrossEntropyLoss()
 
-        self.evaluator = MulticlassF1Score(num_classes=2)
-        self.evaluator_all = MulticlassF1Score(num_classes=2)
+        self.half_evaluator = MulticlassF1Score(num_classes=2)
+        self.final_evaluator = MulticlassF1Score(num_classes=2)
         self.loss_list = []
 
     def device(self) -> bool:
@@ -30,29 +32,32 @@ class Trainer(torch.nn.Module):
         label = label.to(device)
         nodes = nodes.to(device)
         mask = mask.to(device)
-        self.evaluator.to(device)
-        self.evaluator_all.to(device)
+        self.half_evaluator.to(device)
+        self.final_evaluator.to(device)
 
         hidden = self.model(nodes, mask)[0]
         score = self.classifier(hidden)
         loss = self.loss_fn(score, label.long())
-        self.evaluator.update(score, label.long())
-        self.evaluator_all.update(score, label.long())
+        self.half_evaluator.update(score, label.long())
+        self.final_evaluator.update(score, label.long())
 
-        logger.debug("f1   {}".format(self.evaluator.compute().item()))
-        self.evaluator.reset()
-        logger.debug("loss {}".format(loss.item()))
         self.loss_list.append(loss.item())
+
+        if len(self.loss_list) % self.evaluate_step_gap == 0:
+            logger.debug("f1   {}".format(self.half_evaluator.compute().item()))
+            self.half_evaluator.reset()
+            logger.debug("loss {}".format(sum(self.loss_list[-self.evaluate_step_gap :]) / self.evaluate_step_gap))
 
         return loss
 
     def evaluate(self) -> float:
-        f1 = self.evaluator_all.compute()
-        self.evaluator_all.reset()
-        logger.info("aggr evaluate {}".format(f1))
+        logger.info("aggr evaluate {}".format(self.final_evaluator.compute().item()))
         loss = sum(self.loss_list) / len(self.loss_list)
         logger.info("aggr loss     {}".format(loss))
+
         self.loss_list = []
+        self.final_evaluator.reset()
+        self.half_evaluator.reset()
         return loss
 
 

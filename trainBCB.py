@@ -2,6 +2,7 @@ import logging
 from typing import *
 
 import torch
+import yaml
 from torch.cuda.amp import GradScaler
 from torch.utils import data
 from tqdm import tqdm
@@ -28,50 +29,65 @@ if __name__ == "__main__":
     stderr.setLevel(logging.INFO)
     logger.addHandler(stderr)
 
-    batch_size = 8
+    with open("config-default.yaml", "r") as f:
+        cfg = yaml.safe_load(f)
+    try:
+        with open("config.yaml", "r") as f:
+            new_cfg = yaml.safe_load(f)
+        if new_cfg:
+            cfg = {**cfg, **new_cfg}
+    except IOError:
+        pass
+
     ds = BigCloneBench.DataSet(
-        "dataset/BigCloneBench/data.jsonl.txt", "dataset/BigCloneBench/test.txt", max_node_count=1024, fixed_prune=False
+        "dataset/BigCloneBench/data.jsonl.txt",
+        "dataset/BigCloneBench/test.txt",
+        max_node_count=cfg["max_node_count"],
+        fixed_prune=False,
     )
 
-    indices_list = array_split(list(range(len(ds))), 10)
+    indices_list = array_split(list(range(len(ds))), cfg["train_num_chunk"])
     subdataset_list = [data.Subset(ds, indices) for indices in indices_list]
     loaders = [
         data.DataLoader(
             subdataset,
-            batch_size=batch_size,
+            batch_size=cfg["train_batch_size"],
             collate_fn=BigCloneBench.collate_fn,
-            num_workers=4,
+            num_workers=cfg["num_workers"],
             pin_memory=True,
         )
         for subdataset in subdataset_list
     ]
 
     ds = BigCloneBench.DataSet(
-        "dataset/BigCloneBench/data.jsonl.txt", "dataset/BigCloneBench/valid.txt", max_node_count=1024, fixed_prune=True
+        "dataset/BigCloneBench/data.jsonl.txt",
+        "dataset/BigCloneBench/valid.txt",
+        max_node_count=cfg["max_node_count"],
+        fixed_prune=True,
     )
-    ds = data.Subset(ds, list(range(10000)))
+    ds = data.Subset(ds, list(range(cfg["limit_valid_set_size"])))
     v_loader = data.DataLoader(
         ds,
-        batch_size=batch_size,
+        batch_size=cfg["valid_batch_size"],
         collate_fn=BigCloneBench.collate_fn,
-        num_workers=4,
+        num_workers=cfg["num_workers"],
         pin_memory=True,
     )
 
-    model = AstAttention(384, 768, num_layers=6, num_heads=8).cuda()
-    classifier = Classifier(768, 2).cuda()
-    trainer = Trainer(model=model, classifier=classifier).cuda()
+    model = AstAttention(cfg["word_embedding_size"], cfg["hidden_size"], cfg["num_layers"], cfg["num_heads"]).cuda()
+    classifier = Classifier(cfg["hidden_size"], 2).cuda()
+    trainer = Trainer(model=model, classifier=classifier, evaluate_step_gap=cfg["evaluate_step_gap"]).cuda()
 
     optimizer = torch.optim.AdamW(
         [
             {
                 "params": model.parameters(),
-                "lr": 3e-5,
+                "lr": cfg["model_lr"],
                 "weight_decay": 0.1,
             },
             {
                 "params": classifier.parameters(),
-                "lr": 1e-3,
+                "lr": cfg["classifier_lr"],
             },
         ]
     )
@@ -106,7 +122,7 @@ if __name__ == "__main__":
     logger.info("epoch {}".format(epoch))
 
     while True:
-        if trained_chunks == len(loaders):
+        if trained_chunks >= len(loaders):
             epoch += 1
             trained_chunks = 0
             logger.info("===========================")
@@ -125,7 +141,7 @@ if __name__ == "__main__":
 
         torch.save(check_point(trainer, optimizer, scaler, (epoch, trained_chunks)), TRAINER_CKPT_PATH)
 
-        if trained_chunks % 2 == 0:
+        if (trained_chunks + len(loaders) * epoch) % cfg["valid_chunk_gap"] == 0:
             with torch.inference_mode():
                 trainer.eval()
                 for batch in tqdm(v_loader, desc="VALID"):

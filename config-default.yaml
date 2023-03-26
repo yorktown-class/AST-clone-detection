@@ -1,0 +1,18 @@
+num_workers: 4
+train_batch_size: 8
+valid_batch_size: 8
+max_node_count: 1024
+train_num_chunk: 10
+limit_valid_set_size: 10000
+
+# 模型相关
+word_embedding_size: 384
+hidden_size: 768
+num_layers: 6
+num_heads: 8
+model_lr: 3.0e-5
+classifier_lr: 1.0e-3
+
+# 验证
+valid_chunk_gap: 4
+evaluate_step_gap: 50

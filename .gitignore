@@ -6,6 +6,9 @@ __pycache__/
 *.bin
 *.ipynb
 !template.ipynb
+*.yaml
+!pre-commit-config.yaml
+!config-default.yaml
 
 # C extensions
 *.so
