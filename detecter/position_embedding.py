@@ -9,11 +9,9 @@ PE(pos, 2i+1) = cos(pos / 10000 ^ {2i / d})
 
 
 class PositionalEmbedding(torch.nn.Module):
-    def __init__(self, channels, dropout=0.5):
+    def __init__(self, channels):
         super().__init__()
         self.channels = channels
-
-        self.drop = torch.nn.Dropout(p=dropout)
 
         i_pos = torch.arange(0, channels, step=2)
         loge_10000 = torch.log(torch.tensor(10000, dtype=torch.float))
@@ -34,4 +32,4 @@ class PositionalEmbedding(torch.nn.Module):
 
         if x.dim() == 3:
             pe = pe.unsqueeze(1)
-        return self.drop(x + pe)
+        return x + pe

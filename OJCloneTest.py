@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from detecter import parser, tree_tools, word2vec
-from detecter.dataset import OJClone
+from detecter.Xdataset import OJClone
 from detecter.model import AstAttention, Classifier
 
 

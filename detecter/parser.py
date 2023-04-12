@@ -1,6 +1,7 @@
 from typing import *
 
 import tree_sitter
+import numpy
 
 from . import tree_tools
 
@@ -9,24 +10,17 @@ class ParseError(Exception):
     pass
 
 
-def is_punctuation(sent: str) -> bool:
-    punctuation_list = """
-    '";{}[]\n
-    """
-    punctuation_list = list(punctuation_list)
+punctuation_list = """
+'";{}[],.\n
+"""
+punctuation_list = list(punctuation_list)
 
-    return sent in punctuation_list
-
-
-def is_comment(sent: str) -> bool:
-    if sent[0:2] == "//":
-        return True
-    if sent[0:2] == "/*":
-        return True
-    return False
+def is_punctuation(word: str) -> bool:
+    global punctuation_list
+    return word in punctuation_list
 
 
-def parse(code: str, lang: str = "c") -> tree_tools.TreeVE:
+def parse(code: str, lang: str = "c") -> tree_tools.Tree:
     parser = tree_sitter.Parser()
     parser.set_language(tree_sitter.Language("build/lang.so", lang))
     try:
@@ -34,30 +28,34 @@ def parse(code: str, lang: str = "c") -> tree_tools.TreeVE:
     except Exception:
         raise ParseError
 
-    V = list()
-    E = (list(), list())
+    nodes = list()
+    parents = list()
 
-    def walk(node: tree_sitter.Node):
-        desc = node.type
-        if node.is_named and not node.children:
-            desc = node.text.decode("utf-8")
-            if is_punctuation(desc) or is_comment(desc):
-                return None
+    def walk(node: tree_sitter.Node, parent) -> None:
+        nonlocal nodes, parents
 
-        V.append(desc)
-        vid = len(V) - 1
+        node_type = node.type
+
+        if node_type == "comment" or is_punctuation(node_type):
+            return
+
+        nodes.append(node_type)
+        parents.append(parent)
+        node_id = len(nodes) - 1
+
+        if len(node.children) == 0:
+            try:
+                node_text = node.text.decode("ascii")
+            except UnicodeDecodeError:
+                node_text = "UnicodeDecodeError"
+            if node_text != node_type:
+                nodes.append(node_text)
+                parents.append(node_id)
+
         for child in node.children:
-            child_vid = walk(child)
-            if child_vid is None:
-                continue
-            E[0].append(child_vid)
-            E[1].append(vid)
+            walk(child, node_id)
 
-        return vid
+    walk(tree.root_node, -1)
 
-    walk(tree.root_node)
-    return (V, E)
+    return numpy.array(nodes, dtype=numpy.str), numpy.array(parents, dtype=numpy.int)
 
-
-def parse_to_tensor(code: str, lang: str = "c"):
-    pass

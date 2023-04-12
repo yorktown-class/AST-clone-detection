@@ -3,7 +3,7 @@ import logging
 import torch
 
 from .. import logger
-from .position_embedding import PositionalEmbedding
+from ..position_embedding import PositionalEmbedding
 
 
 class AttentionLayer(torch.nn.Module):

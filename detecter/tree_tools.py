@@ -1,117 +1,95 @@
-import math
 from typing import *
 
 import numpy
 import torch
 
-TreeV = List[str]
-TreeE = Tuple[List[int], List[int]]
-TreeVE = Tuple[TreeV, TreeE]
-TreeTensor = Tuple[torch.Tensor, torch.Tensor]
+from . import pace
+
+Nodes = numpy.ndarray
+Parents = numpy.ndarray
+Tree = Tuple[Nodes, Parents]
+TreeTensor = Tuple[torch.Tensor, torch.ShortTensor]
 
 
-def tree_VE_prune(tree_VE: TreeVE, max_node_count=512) -> TreeVE:
-    """
-    递归调用,随机删去叶子,直到树的节点数小于512
-    """
-    tree_V, Tree_E = tree_VE
-    n = len(tree_V)
+def nodes_to_tensor(nodes: Nodes) -> torch.Tensor:
+    node_tensor = torch.zeros((len(nodes), 128))
+    for idx, word in enumerate(nodes):
+        x = pace.position_aware_char_embedding(word)
+        node_tensor[idx, :] = x
+    return node_tensor
+
+
+
+def parents_to_dist(parents: Parents) -> torch.Tensor:
+    n = len(parents)
+    dist = torch.eye(n, dtype=torch.short)
+    for idx, parent in enumerate(parents[:0:-1]):
+        child = n - idx - 1
+        dist[parent, :] = dist[child, :] + 1
+        dist[parent, child] = 1
+    return dist
+
+
+def tree_to_tensor(tree: Tree) -> TreeTensor:
+    nodes, parents = tree
+    return (nodes_to_tensor(nodes), parents_to_dist(parents))
+
+
+def peep_tree_nodes(tree: Tree) -> int:
+    nodes, _ = tree
+    return len(nodes)
+
+
+# def prune_tree_tensor(tree_tensor: TreeTensor, max_node_count: int) -> TreeTensor:
+#     nodes, parents = tree_tensor
+#     n = nodes.shape[0]
+
+#     if n <= max_node_count:
+#         return tree_tensor
+    
+#     remove_count = n - max_node_count
+#     removed = torch.multinomial(torch.arange(1, n, 1), remove_count)
+#     unremoved_mask = torch.ones(n, dtype=torch.bool)
+#     unremoved_mask[removed] = False
+
+#     node_id_map = torch.cumsum(unremoved_mask, dtype=torch.long) - 1
+
+#     nodes = nodes[unremoved_mask]
+#     update_parents = torch.arange(0, n, 1)
+#     update_parents[~unremoved_mask] = update_parents[update_parents[~unremoved_mask]]
+
+#     parents = parents[unremoved_mask]
+#     parents[1:] = node_id_map[parents[1:]]
+
+#     return (nodes, parents)
+
+
+def prune_tree_tensor(tree_tensor: TreeTensor, max_node_count: int) -> TreeTensor:
+    nodes, dist = tree_tensor
+    n = nodes.shape[0]
+
     if n <= max_node_count:
-        return tree_VE
+        return tree_tensor
+    
+    k = n - max_node_count
+    removed = torch.multinomial(torch.ones(n - 1), k) + 1
+    maintain_mask = torch.ones(n, dtype=torch.bool)
+    maintain_mask[removed] = False
 
-    v_out, v_in = Tree_E
-    count = [0] * len(tree_V)
-    for v in v_in:
-        count[v] += 1
+    nodes = nodes[maintain_mask]
+    dist = dist[maintain_mask, :]
+    dist = dist[:, maintain_mask]
 
-    can_prune = [i for i in range(n) if count[i] == 0]
-    assert len(can_prune)
-    numpy.random.shuffle(can_prune)
-
-    k = min(len(can_prune), n - max_node_count)
-    pruned = set(can_prune[:k])
-
-    pruned_V = []
-    vid_map = list(range(n))
-    for idx, v in enumerate(tree_V):
-        if idx not in pruned:
-            pruned_V.append(v)
-            vid_map[idx] = len(pruned_V) - 1
-
-    pruned_out_in = [(out_id, in_id) for out_id, in_id in zip(v_out, v_in) if out_id not in pruned]
-    pruned_out = [vid_map[out_id] for out_id, _ in pruned_out_in]
-    pruned_in = [vid_map[in_id] for _, in_id in pruned_out_in]
-
-    assert len(pruned_V) - 1 == len(pruned_in)
-    assert len(pruned_V) < len(tree_V)
-
-    return tree_VE_prune((pruned_V, (pruned_out, pruned_in)), max_node_count)
+    return (nodes, dist)
 
 
-def tree_VE_to_tensor(tree_VE: TreeVE, word2vec_cache: Dict[str, torch.Tensor] = None) -> TreeTensor:
-    """
-    将由(V, E)表示的树转换为由(nodes, mask)两个tensor表示的树。
-
-    其中nodes表示点矩阵, mask为可达矩阵取反
-    """
-
-    def word2vec(word: str):
-        if word2vec_cache and word in word2vec_cache:
-            return word2vec_cache[word]
-        from . import word2vec
-
-        return word2vec.word2vec(word)
-
-    tree_V, tree_E = tree_VE
-
-    nodes = torch.stack([word2vec(v) for v in tree_V])
-    edges = torch.tensor(tree_E, dtype=torch.long)
-
-    n, _ = nodes.shape
-    _, m = edges.shape
-    mask = torch.eye(n, dtype=torch.bool)
-
-    for i in range(m):
-        mask[edges[1, i]] = torch.logical_or(mask[edges[1, i]], mask[edges[0, i]])
-
-    mask = ~mask
-    return nodes, mask
-
-
-def merge_tree_VE(tree_VE1: TreeVE, tree_VE2: TreeVE, merge_node: str) -> TreeVE:
-    """
-    通过merge_node合并两颗树
-    """
-    tree_V1, tree_E1 = tree_VE1
-    tree_V2, tree_E2 = tree_VE2
-
-    e1_src, e1_dst = tree_E1
-    e2_src, e2_dst = tree_E2
-
-    e1_src = [v + 1 for v in e1_src] + [1]
-    e1_dst = [v + 1 for v in e1_dst] + [0]
-    d = 1 + len(tree_V1)
-    e2_src = [v + d for v in e2_src] + [d]
-    e2_dst = [v + d for v in e2_dst] + [0]
-
-    V = [merge_node] + tree_V1 + tree_V2
-    E = (e1_src + e2_src, e1_dst + e2_dst)
-    assert len(V) - 1 == len(E[0])
-    return V, E
-
-
-def collate_tree_tensor(batch: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor]:
-    nodes_list = [nodes for nodes, mask in batch]
-    mask_list = [mask for nodes, mask in batch]
+def collate_tree_tensor(batch: List[TreeTensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    nodes_list = [nodes for nodes, dist in batch]
+    dist_list = [dist for nodes, dist in batch]
     node_batch = torch.nn.utils.rnn.pad_sequence(nodes_list)
+    N, B, _ = node_batch.shape
+    dist_batch = torch.eye(N, dtype=torch.short).unsqueeze(0).expand((B, N, N)).clone()
+    for idx, dist in enumerate(dist_list):
+        dist_batch[idx, : dist.shape[0], : dist.shape[1]] = dist
+    return node_batch, dist_batch
 
-    n = node_batch.shape[0]
-
-    mask_base = ~torch.eye(n, dtype=torch.bool)
-    mask_batch = mask_base.repeat(len(batch), 1, 1)
-
-    for idx, mask in enumerate(mask_list):
-        n, m = mask.shape
-        mask_batch[idx, :n, :m] = mask
-
-    return node_batch, mask_batch
