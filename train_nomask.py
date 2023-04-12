@@ -1,24 +1,41 @@
-import logging
 
-import pandas
-
-import torch
-from torch.cuda.amp import GradScaler
-from torch.utils import data
-
-from detecter.dataset import PairCodeset, collate_fn
-from BCB_model import Trainer
-from torch.utils.tensorboard import SummaryWriter
-
-from tqdm import tqdm
+import BCB_model
 from detecter import module_tools
-import cProfile
+import torch
+import logging
+from torch.utils import data
+import pandas
+from detecter.dataset import PairCodeset, collate_fn
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+from detecter import tree_transformer
 
 
-def train():
-    logger = logging.getLogger("BCBtrain")
+class TreeTransformerNoMask(tree_transformer.TreeTransformer):
+    def forward(self, nodes: torch.Tensor, dist: torch.Tensor):
+        embedding = self.dense(self.position_embedding(nodes))
+        hidden = self.encoder(embedding)[0]
+        return self.bn(hidden)
+
+module_tools.register_module("ast_transformer_no_mask", TreeTransformerNoMask(128, 128, 2, 2, 4, 2, 0.1))
+
+class DetecterNoMask(BCB_model.Detecter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.encoder = module_tools.PretrainModule("ast_transformer_no_mask")
+
+module_tools.register_module("BCBdetecter_no_mask", DetecterNoMask())
+
+class Trainer(BCB_model.Trainer):
+    def __init__(self, device="cuda") -> None:
+        super().__init__(device)
+        self.model = module_tools.PretrainModule("BCBdetecter_no_mask")
+
+
+if __name__ == "__main__":
+    logger = logging.getLogger("BCBtrainNoMask")
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler("log/BCBtrain.log", mode="a+")
+    fh = logging.FileHandler("log/BCBtrainNoMask.log", mode="a+")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("[%(asctime)s:%(levelname)s] - %(message)s"))
     logger.addHandler(fh)
@@ -28,8 +45,8 @@ def train():
     train_ds.drop(max_node_count=1024)
     print(len(train_ds))
     train_loader = data.DataLoader(
-        train_ds, 
-        batch_size=16, 
+        train_ds,
+        batch_size=16,
         shuffle=True,
         num_workers=4,
         pin_memory=True,
@@ -53,7 +70,7 @@ def train():
     writer = SummaryWriter("log/tensor_board")
 
     try:
-        save = torch.load("log/train.ckpt")
+        save = torch.load("log/train_no_mask.ckpt")
         trainer.load_state_dict(save["trainer_state_dict"])
         optimizer.load_state_dict(save["optimizer_state_dict"])
         trained_chunks = save["trained_chunks"]
@@ -86,7 +103,7 @@ def train():
         detail = trainer.evaluate()
         print(", ".join(["{} {:.4f}".format(key, value) for key, value in detail.items()]))
         for key, value in detail.items():
-            writer.add_scalar("trainBCB/{}".format(key), value, global_step=trained_chunks)
+            writer.add_scalar("trainBCBNoMask/{}".format(key), value, global_step=trained_chunks)
         trainer.reset()
         trained_chunks += 1
 
@@ -96,7 +113,7 @@ def train():
             "trained_chunks": trained_chunks,
             "min_loss": min_loss,
         }
-        torch.save(save, "log/train.ckpt")
+        torch.save(save, "log/train_no_mask.ckpt")
 
         trainer.eval()
         with torch.inference_mode():
@@ -109,16 +126,12 @@ def train():
         detail = trainer.evaluate()
         print(", ".join(["{} {:.4f}".format(key, value) for key, value in detail.items()]))
         for key, value in detail.items():
-            writer.add_scalar("validBCB/{}".format(key), value, global_step=trained_chunks)
+            writer.add_scalar("validBCBNoMask/{}".format(key), value, global_step=trained_chunks)
         trainer.reset()
         
         if detail["loss"] < min_loss:
             min_loss = detail["loss"]
-            module_tools.save_module("BCBdetecter")
-            module_tools.save_module("ast_transformer")
+            module_tools.save_module("BCBdetecter_no_mask")
+            module_tools.save_module("ast_transformer_no_mask")
             save["min_loss"] = min_loss
-            torch.save(save, "log/train.ckpt")
-
-if __name__ == "__main__":
-    # cProfile.run('train()', 'profile.txt')
-    train()
+            torch.save(save, "log/train_no_mask.ckpt")
