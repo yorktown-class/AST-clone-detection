@@ -4,32 +4,30 @@ from detecter import module_tools
 from torcheval import metrics
 
 from detecter import module_tools, tree_transformer
+from detecter import logger
 
 
 class Detecter(torch.nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, encoder) -> None:
         super().__init__()
-        self.encoder = module_tools.PretrainModule("ast_transformer")
+        self.encoder = encoder
         self.linear = torch.nn.Linear(128, 1)
 
     def forward(self, nodes: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
         assert(next(self.encoder.parameters()).device == next(self.parameters()).device)
         hidden = self.encoder(nodes, dist)
         score = self.linear(hidden[0::2] * hidden[1::2]).reshape(-1)
-        return torch.sigmoid(score)
-
-
-module_tools.register_module("BCBdetecter", Detecter())
+        return score
 
 
 class Trainer(torch.nn.Module):
-    def __init__(self, device = "cuda") -> None:
+    def __init__(self, model: Detecter, device = "cuda") -> None:
         super().__init__()
         self.device = device
 
-        self.model = module_tools.PretrainModule("BCBdetecter")
+        self.model = model
 
-        self.loss_fn = torch.nn.BCELoss()
+        self.loss_fn = torch.nn.BCEWithLogitsLoss()
 
         self.loss_list = []
         self.evaluators: Dict[str, metrics.Metric] = {
@@ -55,6 +53,7 @@ class Trainer(torch.nn.Module):
     
     def forward(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
         label, nodes, dist = [item.to(self.device) for item in batch]
+        # logger.debug("lnd: {}, {}, {}".format(label[0], nodes[:, 0, :], dist[0]))
         result: torch.Tensor = self.model(nodes, dist)
 
         loss = self.loss_fn(result, label.float())

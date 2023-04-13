@@ -12,19 +12,23 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from detecter import module_tools
 import cProfile
+import register
 
 
-def train():
-    logger = logging.getLogger("BCBtrain")
+def train(model_name: str, num_epoch: int = None, use_tpe: bool = False, max_node_count: int = None):
+    logger = logging.getLogger("{}_train".format(model_name))
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler("log/BCBtrain.log", mode="a+")
+    fh = logging.FileHandler("log/{}.train.log".format(model_name), mode="a+")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("[%(asctime)s:%(levelname)s] - %(message)s"))
     logger.addHandler(fh)
 
+    model = module_tools.PretrainModule(model_name)
+    trainer = Trainer(model, device="cuda")
+    
     data_source = pandas.read_pickle("dataset/BigCloneBench/data.jsonl.txt.bin")
     train_ds = PairCodeset(data_source, pandas.read_pickle("dataset/BigCloneBench/train.txt.bin"))
-    train_ds.drop(max_node_count=1024)
+    train_ds.drop(max_node_count=max_node_count).use_tpe(use_tpe)
     print(len(train_ds))
     train_loader = data.DataLoader(
         train_ds, 
@@ -36,7 +40,7 @@ def train():
     )
 
     valid_ds = PairCodeset(data_source, pandas.read_pickle("dataset/BigCloneBench/test.txt.bin"))
-    valid_ds.drop(max_node_count=1024).sample(10000)
+    valid_ds.drop(max_node_count=max_node_count).sample(30000).use_tpe(use_tpe)
     valid_loader = data.DataLoader(
         valid_ds, 
         batch_size=16, 
@@ -45,14 +49,14 @@ def train():
         collate_fn=collate_fn
     )
 
-    trainer = Trainer("cuda")
+    trainer = Trainer(module_tools.PretrainModule(model_name), "cuda")
     optimizer = torch.optim.AdamW(params=trainer.parameters(), lr=1e-4, weight_decay=0.1)
     trained_chunks = 0
     min_loss = 1e8
     writer = SummaryWriter("log/tensor_board")
 
     try:
-        save = torch.load("log/train.ckpt")
+        save = torch.load("log/train.{}.ckpt".format(model_name))
         trainer.load_state_dict(save["trainer_state_dict"])
         optimizer.load_state_dict(save["optimizer_state_dict"])
         trained_chunks = save["trained_chunks"]
@@ -61,7 +65,7 @@ def train():
     except IOError:
         print("no ckpt")
     
-    while True:
+    while num_epoch is None or trained_chunks < num_epoch:
         epoch = trained_chunks + 1
         print("============== EPOCH: {} ============== ".format(epoch))
 
@@ -85,7 +89,7 @@ def train():
         detail = trainer.evaluate()
         print(", ".join(["{} {:.4f}".format(key, value) for key, value in detail.items()]))
         for key, value in detail.items():
-            writer.add_scalar("trainBCB/{}".format(key), value, global_step=trained_chunks)
+            writer.add_scalar("{}/train/{}".format(model_name, key), value, global_step=trained_chunks)
         trainer.reset()
         trained_chunks += 1
 
@@ -95,10 +99,10 @@ def train():
             "trained_chunks": trained_chunks,
             "min_loss": min_loss,
         }
-        torch.save(save, "log/train.ckpt")
+        torch.save(save, "log/train.{}.ckpt".format(model_name))
 
-        trainer.eval()
-        with torch.inference_mode():
+        trainer.cuda().eval()
+        with torch.inference_mode(True):
             for idx, batch in enumerate(tqdm(valid_loader, desc="VALID")):
                 trainer(batch)
 
@@ -108,16 +112,18 @@ def train():
         detail = trainer.evaluate()
         print(", ".join(["{} {:.4f}".format(key, value) for key, value in detail.items()]))
         for key, value in detail.items():
-            writer.add_scalar("validBCB/{}".format(key), value, global_step=trained_chunks)
+            writer.add_scalar("{}/valid/{}".format(model_name, key), value, global_step=trained_chunks)
         trainer.reset()
         
         if detail["loss"] < min_loss:
             min_loss = detail["loss"]
-            module_tools.save_module("BCBdetecter")
-            module_tools.save_module("ast_transformer")
+            module_tools.save_module(model_name)
             save["min_loss"] = min_loss
-            torch.save(save, "log/train.ckpt")
+            torch.save(save, "log/train.{}.ckpt".format(model_name))
 
 if __name__ == "__main__":
     # cProfile.run('train()', 'profile.txt')
-    train()
+    # train("BCBdetecter_tpe", use_tpe=True, num_epoch=3, max_node_count=256)
+    # train("BCBdetecter", num_epoch=3, max_node_count=256)
+    # train("BCBdetecter_no_mask", num_epoch=3, max_node_count=256)
+    train("BCBdetecter_final", num_epoch=3, use_tpe=True, max_node_count=1024)

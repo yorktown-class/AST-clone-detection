@@ -12,18 +12,19 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from detecter import module_tools
 from torcheval import metrics
+import register
 
 
-def test():
+def test(model_name: str, use_tpe: bool = False):
     logger = logging.getLogger("BCBtest")
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler("log/BCBtest.log", mode="a+")
+    fh = logging.FileHandler("log/{}.test.log".format(model_name), mode="a+")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("[%(asctime)s:%(levelname)s] - %(message)s"))
     logger.addHandler(fh)
 
     test_ds = PairCodeset(pandas.read_pickle("dataset/BigCloneBench/data.jsonl.txt.bin"), pandas.read_pickle("dataset/BigCloneBench/test.txt.bin"))
-    test_ds.drop(max_node_count=1024).sample(30000)
+    test_ds.drop(max_node_count=1024).sample(30000).use_tpe(use_tpe)
     test_loader = data.DataLoader(
         test_ds, 
         batch_size=16, 
@@ -32,7 +33,7 @@ def test():
         collate_fn=collate_fn
     )
 
-    model = module_tools.PretrainModule("BCBdetecter").cuda()
+    model = module_tools.PretrainModule(model_name).cuda()
     evaluators: Dict[str, metrics.Metric] = {
         "f1": metrics.BinaryF1Score(device="cuda"),
         "precision": metrics.BinaryPrecision(device="cuda"),
@@ -64,4 +65,6 @@ def test():
 
 
 if __name__ == "__main__":
-    test()
+    # test("BCBdetecter_no_mask")
+    # test("BCBdetecter")  
+    test("BCBdetecter_tpe", use_tpe=True)
