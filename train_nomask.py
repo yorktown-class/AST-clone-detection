@@ -19,12 +19,7 @@ class TreeTransformerNoMask(tree_transformer.TreeTransformer):
 
 module_tools.register_module("ast_transformer_no_mask", TreeTransformerNoMask(128, 128, 2, 2, 4, 2, 0.1))
 
-class DetecterNoMask(BCB_model.Detecter):
-    def __init__(self) -> None:
-        super().__init__()
-        self.encoder = module_tools.PretrainModule("ast_transformer_no_mask")
-
-module_tools.register_module("BCBdetecter_no_mask", DetecterNoMask())
+module_tools.register_module("BCBdetecter_no_mask", BCB_model.Detecter("ast_transformer_no_mask"))
 
 class Trainer(BCB_model.Trainer):
     def __init__(self, device="cuda") -> None:

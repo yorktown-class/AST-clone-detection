@@ -16,11 +16,14 @@ class PairCodeset(data.Dataset):
         self.code_data = code_data
         self.pair = pair
         self.max_node_count = None
+        self.tpe = False
     
     def __len__(self) -> int:
         return len(self.pair)
 
     def drop(self, max_node_count: int):
+        if max_node_count is None:
+            return
         def check_length(series):
             return (
                 tree_tools.peep_tree_nodes(self.code_data.loc[series["lhs"], "tree"]) <= max_node_count and
@@ -37,9 +40,14 @@ class PairCodeset(data.Dataset):
         self.pair = self.pair.sample(n)
         return self
     
+    def use_tpe(self, enable: bool = True):
+        self.tpe = enable
+        return self
+    
+    @torch.inference_mode()
     def gettree_(self, code_idx) -> tree_tools.TreeTensor:
         tree = self.code_data.loc[code_idx, "tree"]
-        tree_tensor = tree_tools.tree_to_tensor(tree)
+        tree_tensor = tree_tools.tree_to_tensor(tree, add_tree_position_embedding=self.tpe)
         if self.max_node_count:
             tree_tensor = tree_tools.prune_tree_tensor(tree_tensor, self.max_node_count)
         return tree_tensor
@@ -49,6 +57,7 @@ class PairCodeset(data.Dataset):
         return label, self.gettree_(lhs), self.gettree_(rhs)
 
 
+@torch.inference_mode()
 def collate_fn(batch: List[Batch]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     label_batch =  [label for label, _, _ in batch]
     tree_batch = list(itertools.chain(*[(ltree, rtree) for _, ltree, rtree in batch]))

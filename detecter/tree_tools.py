@@ -3,6 +3,8 @@ from typing import *
 import numpy
 import torch
 
+from .position_embedding import TreePositionEmbedding
+
 from . import pace
 
 Nodes = numpy.ndarray
@@ -11,6 +13,7 @@ Tree = Tuple[Nodes, Parents]
 TreeTensor = Tuple[torch.Tensor, torch.ShortTensor]
 
 
+@torch.inference_mode()
 def nodes_to_tensor(nodes: Nodes) -> torch.Tensor:
     node_tensor = torch.zeros((len(nodes), 128))
     for idx, word in enumerate(nodes):
@@ -19,20 +22,33 @@ def nodes_to_tensor(nodes: Nodes) -> torch.Tensor:
     return node_tensor
 
 
-
+@torch.inference_mode()
 def parents_to_dist(parents: Parents) -> torch.Tensor:
     n = len(parents)
     dist = torch.eye(n, dtype=torch.short)
     for idx, parent in enumerate(parents[:0:-1]):
         child = n - idx - 1
-        dist[parent, :] = dist[child, :] + 1
+        mask = dist[child, :] != 0
+        dist[parent, mask] = dist[child, mask] + 1
         dist[parent, child] = 1
+    assert(dist[0][0] == 1)
     return dist
 
 
-def tree_to_tensor(tree: Tree) -> TreeTensor:
+tree_position_embedding = TreePositionEmbedding(128)
+@torch.inference_mode()
+def parents_to_tpe(parents: Parents) -> torch.Tensor:
+    return tree_position_embedding(torch.tensor(parents))
+
+
+@torch.inference_mode()
+def tree_to_tensor(tree: Tree, add_tree_position_embedding: bool = False) -> TreeTensor:
     nodes, parents = tree
-    return (nodes_to_tensor(nodes), parents_to_dist(parents))
+    nodes_tensor = nodes_to_tensor(nodes)
+    dist_tensor = parents_to_dist(parents)
+    if add_tree_position_embedding:
+        nodes_tensor += parents_to_tpe(parents)
+    return (nodes_tensor, dist_tensor)
 
 
 def peep_tree_nodes(tree: Tree) -> int:
@@ -64,6 +80,7 @@ def peep_tree_nodes(tree: Tree) -> int:
 #     return (nodes, parents)
 
 
+@torch.inference_mode()
 def prune_tree_tensor(tree_tensor: TreeTensor, max_node_count: int) -> TreeTensor:
     nodes, dist = tree_tensor
     n = nodes.shape[0]
@@ -83,6 +100,7 @@ def prune_tree_tensor(tree_tensor: TreeTensor, max_node_count: int) -> TreeTenso
     return (nodes, dist)
 
 
+@torch.inference_mode()
 def collate_tree_tensor(batch: List[TreeTensor]) -> Tuple[torch.Tensor, torch.Tensor]:
     nodes_list = [nodes for nodes, dist in batch]
     dist_list = [dist for nodes, dist in batch]
