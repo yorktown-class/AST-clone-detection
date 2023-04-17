@@ -57,7 +57,8 @@ class TreeTransformer(torch.nn.Module):
         self.long_heads = long_heads
         self.global_heads = global_heads
         
-        self.position_embedding = PositionalEmbedding(input_size)
+        if self.use_pe:
+            self.position_embedding = PositionalEmbedding(input_size)
         # self.input_dropout = torch.nn.Dropout(p=dropout)
         
         self.dense = torch.nn.Sequential(
@@ -77,6 +78,7 @@ class TreeTransformer(torch.nn.Module):
         self.bn = torch.nn.BatchNorm1d(hidden_size)
     
     def forward(self, nodes: torch.Tensor, dist: torch.Tensor):
+        # print(nodes.shape, dist.shape)
         if self.use_pe:
             nodes = self.position_embedding(nodes)
         # embedding = self.input_dropout(nodes)

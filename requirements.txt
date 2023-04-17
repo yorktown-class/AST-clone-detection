@@ -1,1 +1,6 @@
 tree_sitter
+torchinfo
+torcheval
+torch
+numpy
+pandas

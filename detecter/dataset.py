@@ -23,7 +23,7 @@ class PairCodeset(data.Dataset):
 
     def drop(self, max_node_count: int):
         if max_node_count is None:
-            return
+            return self
         def check_length(series):
             return (
                 tree_tools.peep_tree_nodes(self.code_data.loc[series["lhs"], "tree"]) <= max_node_count and
@@ -32,7 +32,7 @@ class PairCodeset(data.Dataset):
         self.pair = self.pair[self.pair.apply(check_length, axis=1)]
         return self
     
-    def prune(self, max_node_count: int):
+    def prune(self, max_node_count: int = None):
         self.max_node_count = max_node_count
         return self
     
