@@ -1,7 +1,7 @@
 from typing import *
 
-import tree_sitter
 import numpy
+import tree_sitter
 
 from . import tree_tools
 
@@ -14,6 +14,7 @@ punctuation_list = """
 '";{}[],.\n
 """
 punctuation_list = list(punctuation_list)
+
 
 def is_punctuation(word: str) -> bool:
     global punctuation_list
@@ -58,4 +59,3 @@ def parse(code: str, lang: str = "c") -> tree_tools.Tree:
     walk(tree.root_node, -1)
 
     return numpy.array(nodes, dtype=numpy.str), numpy.array(parents, dtype=numpy.int)
-

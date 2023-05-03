@@ -3,9 +3,8 @@ from typing import *
 import numpy
 import torch
 
-from .position_embedding import TreePositionEmbedding
-
 from . import pace
+from .position_embedding import TreePositionEmbedding
 
 Nodes = numpy.ndarray
 Parents = numpy.ndarray
@@ -31,11 +30,13 @@ def parents_to_dist(parents: Parents) -> torch.Tensor:
         mask = dist[child, :] != 0
         dist[parent, mask] = dist[child, mask] + 1
         dist[parent, child] = 1
-    assert(dist[0][0] == 1)
+    assert dist[0][0] == 1
     return dist
 
 
 tree_position_embedding = TreePositionEmbedding(128)
+
+
 @torch.inference_mode()
 def parents_to_tpe(parents: Parents) -> torch.Tensor:
     return tree_position_embedding(torch.tensor(parents))
@@ -62,7 +63,7 @@ def peep_tree_nodes(tree: Tree) -> int:
 
 #     if n <= max_node_count:
 #         return tree_tensor
-    
+
 #     remove_count = n - max_node_count
 #     removed = torch.multinomial(torch.arange(1, n, 1), remove_count)
 #     unremoved_mask = torch.ones(n, dtype=torch.bool)
@@ -87,7 +88,7 @@ def prune_tree_tensor(tree_tensor: TreeTensor, max_node_count: int) -> TreeTenso
 
     if n <= max_node_count:
         return tree_tensor
-    
+
     k = n - max_node_count
     removed = torch.multinomial(torch.ones(n - 1), k) + 1
     maintain_mask = torch.ones(n, dtype=torch.bool)
@@ -110,4 +111,3 @@ def collate_tree_tensor(batch: List[TreeTensor]) -> Tuple[torch.Tensor, torch.Te
     for idx, dist in enumerate(dist_list):
         dist_batch[idx, : dist.shape[0], : dist.shape[1]] = dist
     return node_batch, dist_batch
-

@@ -1,9 +1,8 @@
-from detecter import module_tools
+import copy
 
 from BCB_model import Detecter
+from detecter import module_tools
 from detecter.tree_transformer import TreeTransformer
-
-import copy
 
 # tt = TreeTransformer(128, 128, num_layers=2, short_heads=2, long_heads=4, global_heads=2, dropout=0.1)
 # tt_nm = TreeTransformer(128, 128, num_layers=2, short_heads=0, long_heads=0, global_heads=8, dropout=0.1, use_mask=False)

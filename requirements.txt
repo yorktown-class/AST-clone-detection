@@ -1,6 +1,6 @@
-tree_sitter
-torchinfo
-torcheval
-torch
 numpy
 pandas
+torch
+torcheval
+torchinfo
+tree_sitter

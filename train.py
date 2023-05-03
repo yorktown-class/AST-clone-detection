@@ -1,30 +1,30 @@
+import cProfile
 import logging
+from typing import *
 
 import pandas
-
 import torch
 from torch.cuda.amp import GradScaler
 from torch.utils import data
-
-from detecter.dataset import PairCodeset, collate_fn
-from BCB_model import Trainer
 from torch.utils.tensorboard import SummaryWriter
 from torcheval import metrics
-
 from tqdm import tqdm
-from detecter import module_tools
-import cProfile
+
 import register
-from typing import *
+from BCB_model import Trainer
+from detecter import module_tools
+from detecter.dataset import PairCodeset, collate_fn
 
 
 def log_metrics(log_func: Callable, title: str, detail: Dict):
     log_func(title + " " + ", ".join(["{} {:.4f}".format(key, value) for key, value in detail.items()]))
 
+
 def add_scalar(dir: str, tag: str, detail: Dict, step):
     with SummaryWriter(dir) as sw:
         for key, value in detail.items():
             sw.add_scalar("{}/{}".format(tag, key), value, global_step=step)
+
 
 def log_grads(log_func: Callable, model: torch.nn.Module):
     for name, paramter in model.named_parameters():
@@ -32,7 +32,14 @@ def log_grads(log_func: Callable, model: torch.nn.Module):
             log_func("  {}: {}, {}".format(name, paramter.data.norm(), paramter.grad.norm()))
 
 
-def train(model_name: str, num_epoch: int = None, use_tpe: bool = False, max_node_count: int = None, prune_node_count: int = None, shuffle: bool = False):
+def train(
+    model_name: str,
+    num_epoch: int = None,
+    use_tpe: bool = False,
+    max_node_count: int = None,
+    prune_node_count: int = None,
+    shuffle: bool = False,
+):
     print("train {}".format(model_name))
     logger = logging.getLogger("{}_train".format(model_name))
     logger.setLevel(logging.DEBUG)
@@ -46,23 +53,12 @@ def train(model_name: str, num_epoch: int = None, use_tpe: bool = False, max_nod
     train_ds.drop(max_node_count).prune(prune_node_count).use_tpe(use_tpe)
     print(len(train_ds))
     train_loader = data.DataLoader(
-        train_ds, 
-        batch_size=16, 
-        shuffle=shuffle,
-        num_workers=4,
-        pin_memory=True,
-        collate_fn=collate_fn
+        train_ds, batch_size=16, shuffle=shuffle, num_workers=4, pin_memory=True, collate_fn=collate_fn
     )
 
     valid_ds = PairCodeset(data_source, pandas.read_pickle("dataset/BigCloneBench/valid.txt.bin"))
     valid_ds.drop(max_node_count).prune(prune_node_count).use_tpe(use_tpe).sample(10000)
-    valid_loader = data.DataLoader(
-        valid_ds, 
-        batch_size=16, 
-        num_workers=4,
-        pin_memory=True,
-        collate_fn=collate_fn
-    )
+    valid_loader = data.DataLoader(valid_ds, batch_size=16, num_workers=4, pin_memory=True, collate_fn=collate_fn)
 
     model = module_tools.get_module(model_name).cuda()
     trainer = Trainer(model, device="cuda")
@@ -80,7 +76,7 @@ def train(model_name: str, num_epoch: int = None, use_tpe: bool = False, max_nod
         print(min_loss)
     except IOError:
         print("no ckpt")
-    
+
     while num_epoch is None or trained_chunks < num_epoch:
         epoch = trained_chunks + 1
         print("============== EPOCH: {} ============== ".format(epoch))
@@ -125,7 +121,7 @@ def train(model_name: str, num_epoch: int = None, use_tpe: bool = False, max_nod
         trainer.reset()
         log_metrics(print, "", detail)
         add_scalar(tbdir, "valid", detail, epoch)
-        
+
         if detail["loss"] < min_loss:
             min_loss = detail["loss"]
             module_tools.save_module(model_name)
@@ -141,18 +137,12 @@ def find_threshold(model_name: str, use_tpe: bool = False, max_node_count: int =
     # fh.setFormatter(logging.Formatter("[%(asctime)s:%(levelname)s] - %(message)s"))
     # logger.addHandler(fh)
 
-    
     data_source = pandas.read_pickle("dataset/BigCloneBench/data.jsonl.txt.bin")
     train_ds = PairCodeset(data_source, pandas.read_pickle("dataset/BigCloneBench/valid.txt.bin"))
     train_ds.drop(max_node_count).prune(prune_node_count).use_tpe(use_tpe).sample(5000)
     print(len(train_ds))
     train_loader = data.DataLoader(
-        train_ds, 
-        batch_size=16, 
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True,
-        collate_fn=collate_fn
+        train_ds, batch_size=16, shuffle=True, num_workers=4, pin_memory=True, collate_fn=collate_fn
     )
 
     model = module_tools.get_module(model_name).cuda().eval()
@@ -167,9 +157,11 @@ def find_threshold(model_name: str, use_tpe: bool = False, max_node_count: int =
     pcurve, rcurve, threshold = pr_curve.compute()
     f1curve = 2 / (1 / pcurve + 1 / rcurve)
     max_id = f1curve.argmax()
-    print("f1 {:.4f}, precision {:.4f}, recall {:.4f}, threshold {:.4f}".format(
-        f1curve[max_id], pcurve[max_id], rcurve[max_id], threshold[max_id]
-    ))
+    print(
+        "f1 {:.4f}, precision {:.4f}, recall {:.4f}, threshold {:.4f}".format(
+            f1curve[max_id], pcurve[max_id], rcurve[max_id], threshold[max_id]
+        )
+    )
 
 
 def fine_tune(model_name: str, use_tpe: bool = False, max_node_count: int = None, prune_node_count: int = None):
@@ -178,12 +170,7 @@ def fine_tune(model_name: str, use_tpe: bool = False, max_node_count: int = None
     train_ds.drop(max_node_count).prune(prune_node_count).use_tpe(use_tpe).sample(20000)
 
     train_loader = data.DataLoader(
-        train_ds, 
-        batch_size=16, 
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True,
-        collate_fn=collate_fn
+        train_ds, batch_size=16, shuffle=True, num_workers=4, pin_memory=True, collate_fn=collate_fn
     )
 
     model = module_tools.get_module(model_name).cuda().eval()
@@ -201,9 +188,10 @@ def fine_tune(model_name: str, use_tpe: bool = False, max_node_count: int = None
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    
+
     log_metrics(print, "", trainer.evaluate())
     import copy
+
     mn = model_name + "_finetune"
     module_tools.save_module(mn)
 
@@ -213,7 +201,7 @@ if __name__ == "__main__":
     # train("BCBdetecter_basic", num_epoch=1, max_node_count=512, prune_node_count=256, use_tpe=False, shuffle=False)
     # train("BCBdetecter_mask", num_epoch=1, max_node_count=512, prune_node_count=256, use_tpe=False, shuffle=False)
     # train("BCBdetecter_tpe", num_epoch=1, max_node_count=512, prune_node_count=256, use_tpe=True, shuffle=False)
-    
+
     train("BCBdetecter", num_epoch=3, prune_node_count=1000, use_tpe=True, shuffle=True)
     find_threshold("BCBdetecter", use_tpe=True, prune_node_count=1000)
     # fine_tune("BCBdetecter", use_tpe=True, prune_node_count=1000)

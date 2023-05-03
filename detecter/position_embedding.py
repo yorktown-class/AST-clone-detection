@@ -1,6 +1,7 @@
-import torch
-import math
 import functools
+import math
+
+import torch
 
 """
 PE(pos, 2i) = sin(pos / 10000 ^ {2i / d})
@@ -35,7 +36,7 @@ class PositionalEmbedding(torch.nn.Module):
     @torch.no_grad()
     def get_pe(self, length: int) -> torch.Tensor:
         if length <= 1024:
-            return self.pe_default[: length, :].clone()
+            return self.pe_default[:length, :].clone()
         return self.calc_pe_(length)
 
     @torch.no_grad()
@@ -52,7 +53,7 @@ class PositionalEmbedding(torch.nn.Module):
 class TreePositionEmbedding(PositionalEmbedding):
     def __init__(self, channels) -> None:
         super().__init__(channels)
-    
+
     @torch.inference_mode()
     def forward(self, parents: torch.Tensor) -> torch.Tensor:
         N = parents.shape[0]

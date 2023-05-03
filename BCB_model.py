@@ -1,4 +1,5 @@
 from typing import *
+
 import torch
 from torcheval import metrics
 
@@ -16,7 +17,7 @@ class Detecter(torch.nn.Module):
 
 
 class Trainer(torch.nn.Module):
-    def __init__(self, model: Detecter, device = "cuda") -> None:
+    def __init__(self, model: Detecter, device="cuda") -> None:
         super().__init__()
         self.device = device
 
@@ -40,12 +41,12 @@ class Trainer(torch.nn.Module):
         for key, evaluator in self.evaluators.items():
             result[key] = evaluator.compute()
         return result
-    
+
     def reset(self) -> None:
         self.loss_list = []
         for evaluator in self.evaluators.values():
             evaluator.reset()
-    
+
     def forward(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
         label, nodes, dist = [item.to(self.device) for item in batch]
         result: torch.Tensor = self.model(nodes, dist)
@@ -55,5 +56,5 @@ class Trainer(torch.nn.Module):
         self.loss_list.append(loss.item())
         for evaluator in self.evaluators.values():
             evaluator.update(result, label.long())
-        
+
         return loss
