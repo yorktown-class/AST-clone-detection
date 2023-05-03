@@ -9,4 +9,6 @@ ignore =
 	# line too long
 	E501,
 	# whitespace before ':'
-	E203
+	E203,
+	# line break before binary operator
+	W503
