@@ -23,15 +23,6 @@ def save_module(module_name: str):
 	torch.save(module_dict[module_name].state_dict(), module_path(module_name))
 
 
-class PretrainModule(torch.nn.Module):
-	def __init__(self, name: str) -> None:
-		super().__init__()
-		self.module_name = name
-		self.model = module_dict[name]
-		
-	def forward(self, *args, **kwargs):
-		return self.model(*args, **kwargs)
-
-	def save(self) -> None:
-		save_module(self.module_name)
+def get_module(module_name: str):
+	return module_dict[module_name]
 

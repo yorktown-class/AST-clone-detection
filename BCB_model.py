@@ -1,10 +1,6 @@
 from typing import *
 import torch
-from detecter import module_tools
 from torcheval import metrics
-
-from detecter import module_tools, tree_transformer
-from detecter import logger
 
 
 class Detecter(torch.nn.Module):
@@ -14,7 +10,6 @@ class Detecter(torch.nn.Module):
         self.linear = torch.nn.Linear(128, 1)
 
     def forward(self, nodes: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
-        assert(next(self.encoder.parameters()).device == next(self.parameters()).device)
         hidden = self.encoder(nodes, dist)
         score = self.linear(hidden[0::2] * hidden[1::2]).reshape(-1)
         return score
@@ -53,7 +48,6 @@ class Trainer(torch.nn.Module):
     
     def forward(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
         label, nodes, dist = [item.to(self.device) for item in batch]
-        # logger.debug("lnd: {}, {}, {}".format(label[0], nodes[:, 0, :], dist[0]))
         result: torch.Tensor = self.model(nodes, dist)
 
         loss = self.loss_fn(result, label.float())

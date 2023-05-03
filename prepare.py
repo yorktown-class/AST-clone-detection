@@ -32,8 +32,6 @@ def prepare_BCB_pair(path, code_data: pandas.DataFrame):
         "rhs": rhs_list,
         "label": label_list,
 	})
-    # df.loc[:, "lhs"] = code_data.loc[df["lhs"], "cindex"].values
-    # df.loc[:, "rhs"] = code_data.loc[df["rhs"], "cindex"].values
     return df
 
 
